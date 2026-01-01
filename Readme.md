@@ -6,12 +6,12 @@ Quest 3 AR application using the Meta XR SDK with C++.
 
 1. **Development Environment Setup**
    ```bash
-   ./setup_quest_dev_env.sh
+   ./scripts/setup_quest_dev_env.sh
    ```
 
 2. **Device Connection Setup**
    ```bash
-   ./udev_env_setup.sh
+   ./scripts/udev_env_setup.sh
    ```
 
 3. **Verify Device Connection**
@@ -28,7 +28,7 @@ Quest 3 AR application using the Meta XR SDK with C++.
 
 ### Automated Setup Scripts
 
-#### `setup_quest_dev_env.sh`
+#### `scripts/setup_quest_dev_env.sh`
 Installs and configures the complete Android development environment:
 - Android NDK r29
 - Android SDK with command line tools
@@ -36,7 +36,7 @@ Installs and configures the complete Android development environment:
 - Java OpenJDK 21
 - CMake and Ninja build system
 
-#### `udev_env_setup.sh`
+#### `scripts/udev_env_setup.sh`
 Configures device connection and debugging:
 - Sets up udev rules for Meta Quest devices (vendor ID 2833)
 - Adds user to plugdev group
@@ -58,6 +58,29 @@ Configures device connection and debugging:
 3. Enable Developer Mode and USB Debugging on device
 4. Verify connection with `adb devices`
 5. Build and deploy applications using NDK/CMake
+
+## Create Project Structure
+
+```bash
+./scripts/create_project_structure.sh
+```
+
+This script creates the basic directory structure and template files for a new Meta Quest 3 AR application.
+
+**Main Project Components:**
+- Core application framework
+- XR passthrough manager and spatial anchor system
+- Android main entry point
+
+## Build and Deploy
+
+```bash
+./scripts/build_deploy.sh
+```
+
+Builds the project and deploys it to the connected Quest 3 device.
+
+
 
 ## Troubleshooting
 
