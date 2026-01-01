@@ -26,15 +26,15 @@ cmake .. \
 # Build
 ninja -j$(nproc)
 
-# Create lib directory structure and copy library (correct Android APK structure)
-mkdir -p lib/arm64-v8a
-cp libmeta_quest3s_lab.so lib/arm64-v8a/
+# Create lib directory structure and copy library (Android looks in lib/arm64)
+mkdir -p lib/arm64
+cp libmeta_quest3s_lab.so lib/arm64/
 
 # Package APK
 $ANDROID_SDK_ROOT/build-tools/35.0.0/aapt package -f -M ../AndroidManifest.xml \
     -I $ANDROID_SDK_ROOT/platforms/android-34/android.jar \
     -F ${APK_NAME}_unsigned.apk \
-    lib/arm64-v8a
+    lib
 
 # Align APK first
 $ANDROID_SDK_ROOT/build-tools/35.0.0/zipalign -f 4 ${APK_NAME}_unsigned.apk ${APK_NAME}_aligned.apk
