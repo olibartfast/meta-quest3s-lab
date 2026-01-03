@@ -1,6 +1,6 @@
 # Meta Quest 3 AR Lab
 
-Quest 3 AR application using the Meta XR SDK with C++.
+Quest 3 AR playground environment using the Meta XR SDK with C++(Native development, so no Unity, no Unreal).
 
 ## Quick Start
 
