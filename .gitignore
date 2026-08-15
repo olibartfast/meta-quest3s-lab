@@ -1,4 +1,7 @@
 build
+__pycache__/
+*.py[cod]
+.venv/
 .gradle/
 .cxx/
 local.properties
