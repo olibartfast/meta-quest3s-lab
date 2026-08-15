@@ -7,6 +7,13 @@ in `libs/`, and the preserved legacy baseline lives in `XrPassthrough/`.
 Repository setup and device utilities live in `scripts/`. Keep generated
 Gradle, CMake, shader, and APK output out of source directories and commits.
 
+Agent-facing specifications live in `specs/`: `mission.md`, `tech-stack.md`, and
+`roadmap.md` describe the product, the pinned toolchain, and the outstanding
+work, and `specs/milestone-plans/` holds the per-milestone implementation plans.
+Read `specs/` before starting a task. `docs/` holds technical reference and
+measured results for humans — architecture, coordinate systems, per-feature
+guides, and validation reports.
+
 ## Build, Test, and Development Commands
 
 Run commands from the repository root unless noted:

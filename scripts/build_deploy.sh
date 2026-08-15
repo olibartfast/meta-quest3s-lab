@@ -30,7 +30,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: $0 --app {01-openxr-bootstrap|02-vulkan-stereo-triangle|03-head-pose|04-controller-input|05-passthrough|06-spatial-object|07-hand-tracking|08-spatial-anchors|09-quest-camera|xrpassthrough} [--build-only] [--vulkan-validation]" >&2
+            echo "Usage: $0 --app {01-openxr-bootstrap|02-vulkan-stereo-triangle|03-head-pose|04-controller-input|05-passthrough|06-spatial-object|07-hand-tracking|08-spatial-anchors|09-quest-camera|16-stereo-probe|xrpassthrough} [--build-only] [--vulkan-validation]" >&2
             exit 2
             ;;
     esac
@@ -38,7 +38,7 @@ done
 
 if [[ -z "$app" ]]; then
     echo "Select an application with --app." >&2
-    echo "Usage: $0 --app {01-openxr-bootstrap|02-vulkan-stereo-triangle|03-head-pose|04-controller-input|05-passthrough|06-spatial-object|07-hand-tracking|08-spatial-anchors|09-quest-camera|xrpassthrough} [--build-only] [--vulkan-validation]" >&2
+    echo "Usage: $0 --app {01-openxr-bootstrap|02-vulkan-stereo-triangle|03-head-pose|04-controller-input|05-passthrough|06-spatial-object|07-hand-tracking|08-spatial-anchors|09-quest-camera|16-stereo-probe|xrpassthrough} [--build-only] [--vulkan-validation]" >&2
     exit 2
 fi
 
@@ -157,6 +157,16 @@ case "$app" in
         activity=".QuestCameraActivity"
         log_tag="QuestCamera"
         ;;
+    16-stereo-probe)
+        build_command=(
+            "$repo_root/gradlew"
+            ":apps:16-stereo-probe:assembleDebug"
+        )
+        apk_path="$repo_root/apps/16-stereo-probe/build/outputs/apk/debug/16-stereo-probe-debug.apk"
+        application_id="com.olibartfast.questlab.stereoprobe"
+        activity="com.olibartfast.questlab.stereoprobe.StereoProbeActivity"
+        log_tag="StereoProbe"
+        ;;
     xrpassthrough)
         build_command=("$repo_root/XrPassthrough/Projects/Android/gradlew" assembleDebug)
         build_directory="$repo_root/XrPassthrough/Projects/Android"
@@ -167,7 +177,7 @@ case "$app" in
         ;;
     *)
         echo "Unknown application: $app" >&2
-        echo "Available applications: 01-openxr-bootstrap, 02-vulkan-stereo-triangle, 03-head-pose, 04-controller-input, 05-passthrough, 06-spatial-object, 07-hand-tracking, 08-spatial-anchors, 09-quest-camera, xrpassthrough" >&2
+        echo "Available applications: 01-openxr-bootstrap, 02-vulkan-stereo-triangle, 03-head-pose, 04-controller-input, 05-passthrough, 06-spatial-object, 07-hand-tracking, 08-spatial-anchors, 09-quest-camera, 16-stereo-probe, xrpassthrough" >&2
         exit 2
         ;;
 esac
@@ -213,7 +223,31 @@ if [[ "$device_count" -ne 1 ]]; then
 fi
 
 adb install -r "$apk_path"
+
+if [[ "$app" == "16-stereo-probe" ]]; then
+    adb shell pm grant "$application_id" android.permission.CAMERA
+    adb shell pm grant \
+        "$application_id" horizonos.permission.HEADSET_CAMERA
+    adb shell am force-stop "$application_id"
+fi
 adb shell am start -n "$application_id/$activity"
+
+if [[ "$app" == "16-stereo-probe" ]]; then
+    probe_started=false
+    for _ in {1..50}; do
+        if adb shell pidof "$application_id" > /dev/null; then
+            probe_started=true
+            break
+        fi
+        sleep 0.2
+    done
+    if [[ "$probe_started" != true ]]; then
+        echo "APK installed, but Horizon did not start the probe." >&2
+        echo "Wake and wear the headset, dismiss any launch-check dialog, then run:" >&2
+        echo "  adb shell am start -n $application_id/$activity" >&2
+        exit 1
+    fi
+fi
 
 echo "Application launched. Inspect logs with:"
 echo "  adb logcat -s $log_tag:V OpenXR:V '*:S'"

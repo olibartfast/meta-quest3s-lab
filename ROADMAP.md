@@ -436,7 +436,7 @@ or depth is required.
 
 # Milestone 10 — Offline RF-DETR Detection
 
-**Status:** Planned in `docs/milestone10-plan.md`; blocked by Milestone 9.
+**Status:** Planned in `specs/milestone-plans/milestone10-plan.md`; blocked by Milestone 9.
 
 ## Goal
 
@@ -472,7 +472,7 @@ preprocessing, inference, and postprocessing time separately.
 
 # Milestone 11 — Live RF-DETR 2D Detection
 
-**Status:** Planned in `docs/milestone11-plan.md`; blocked by Milestones 9 and
+**Status:** Planned in `specs/milestone-plans/milestone11-plan.md`; blocked by Milestones 9 and
 10.
 
 ## Goal
@@ -511,7 +511,7 @@ stale results are hidden, and reconnect works without restarting OpenXR.
 
 # Milestone 12 — Environment Depth
 
-**Status:** Planned in `docs/milestone12-plan.md`; blocked by Milestone 9 only.
+**Status:** Planned in `specs/milestone-plans/milestone12-plan.md`; blocked by Milestone 9 only.
 
 ## Goal
 
@@ -551,7 +551,7 @@ the generic depth-source interface.
 
 # Milestone 13 — RGB and Depth Alignment
 
-**Status:** Planned in `docs/milestone13-plan.md`; blocked by Milestones 9 and
+**Status:** Planned in `specs/milestone-plans/milestone13-plan.md`; blocked by Milestones 9 and
 12.
 
 ## Goal
@@ -591,7 +591,7 @@ blocker rather than hidden by an approximation.
 
 # Milestone 14 — RF-DETR Spatial Overlay
 
-**Status:** Planned in `docs/milestone14-plan.md`; blocked by Milestones 11 and
+**Status:** Planned in `specs/milestone-plans/milestone14-plan.md`; blocked by Milestones 11 and
 13.
 
 ## Goal
@@ -656,6 +656,18 @@ Improve the experiments with performance instrumentation, robustness, documentat
 ## Definition of Done
 
 The repository demonstrates clean native architecture, repeatable builds, measured performance, and multiple independently understandable XR examples.
+
+---
+
+# Milestone 16 — Stereo Capability Probe
+
+**Status:** Implemented and measured on Quest 3. Verdict:
+`PASS_WITH_DEBT`. Concurrent topology, capture, timestamp skew, and exposure
+passed; per-device calibration, optical synchronization validation, and
+Camera2-to-OpenXR time correlation remain explicit debt.
+
+The pixel-free report, measured values, and downstream design decision are
+recorded in `docs/stereo-capability.md`.
 
 ---
 

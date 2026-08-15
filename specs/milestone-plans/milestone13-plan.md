@@ -1,5 +1,12 @@
 # Milestone 13 — RGB and Depth Alignment
 
+> **Revision required after Milestone 16:** this document remains a valid
+> experiment for Camera2-to-OpenXR timing and Environment Depth reprojection,
+> but it is no longer automatically the primary object-ranging path. Implement
+> the common time/pose-correlation pieces only after the stereo calibration and
+> optical-sync gate selects the validated branch. See
+> `docs/stereo-capability.md`.
+
 ## Goal
 
 Align Quest Camera2 RGB with Meta environment depth spatially and temporally.

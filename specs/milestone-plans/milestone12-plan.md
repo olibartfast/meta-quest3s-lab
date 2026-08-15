@@ -1,5 +1,11 @@
 # Milestone 12 — Environment Depth
 
+> **Scope status after Milestone 16:** retain this plan for occlusion, raycasts,
+> and coarse scene geometry. It is no longer the assumed RF-DETR object-ranging
+> source. Do not feed box-only detections into Environment Depth and call the
+> result object geometry without a separately validated registration and object
+> isolation method. See `docs/stereo-capability.md`.
+
 ## Goal
 
 Acquire Meta environment depth, visualize it, convert it into metric distance,
