@@ -1,88 +1,105 @@
 # Validation: Milestone 9 Fixture and App 09 Acceptance
 
-**A bare `[x]` is not a result.** Every check records what was measured, on
-which device, on what date:
+Fill in the **Result** column as you go. `[x]` passed · `[ ]` not run ·
+`[!]` failed — write the cause, do not delete the row.
 
-```
-- [x] Pause/resume cycles — 10/10 capture returned, Quest 3, 2026-08-15
-- [ ] Peak RSS over 15 min — not run
-- [!] Colour on diagnostic quad — R/B swapped, Quest 3S, 2026-08-15 (see note)
-```
+A tick with no number is not a result.
 
-`[x]` passed · `[ ]` not run · `[!]` failed, with the cause named. A `[!]`
-does not block closing this spec; hiding it does.
-
-**Tree under test:** commit `________` (from plan task 3)
-**Devices:** Quest 3 `________` · Quest 3S `________` (build/serial)
-**Session log:** `________` (path to the retained logcat capture)
+**Commit under test:** `________` · **Headset:** Quest 3 / 3S `________`
+**Date:** `________` · **Session log:** `/tmp/m9-session.log`
 
 ---
 
-## Prerequisites
+## Before the headset
 
-- [ ] Working tree committed; `git status` clean apart from ignored build output
-- [ ] App 10 README no longer describes the assumed-range box or thumbstick range control
-- [ ] `docs/rfdetr-detection.md` corrected the same way
-- [ ] `ROADMAP.md` Milestone 12 and 14 status lines reflect the code on disk
-- [ ] `specs/roadmap.md` Phases 5 and 7 reconciled
-- [ ] Capture scene prepared and privacy review procedure agreed
+| # | Check | Command | Result |
+|---|---|---|---|
+| 1 | Tree committed | `git status --short` → empty | |
+| 2 | No build output committed | `git status -uall \| grep -c "build/\|\.cxx/"` → `0` | |
+| 3 | App 10 docs fixed | `grep -rn "assumed\|thumbstick" apps/10-rfdetr-detection/README.md docs/rfdetr-detection.md` → no range-box hits | |
+| 4 | M12/M14 status honest | `ROADMAP.md` names the code on disk | |
+| 5 | camera_source tests | `ctest --test-dir build/camera-source-tests` → all pass | |
+| 6 | APK builds | `./scripts/build_deploy.sh --app 09-quest-camera --build-only` → exit 0 | |
+| 7 | Source switching needs no code edit | Both apps pass `CameraSourceKind` through `CreateCameraSource` | |
+| 8 | Scene prepared, reviewer agreed | | |
 
-## Automated
+## In the headset
 
-- [ ] `libs/camera_source` host tests pass — command: ________ , result: ________
-- [ ] Fixture-manifest tests pass — ________
-- [ ] YUV conversion tests pass — ________
-- [ ] App 09 APK builds — `./scripts/build_deploy.sh --app 09-quest-camera --build-only`
-- [ ] Source switching needs no code edit — `CreateCameraSource` selects `MetaCamera2` and `Replay` from configuration alone
+Run in order. Step 1 needs a fresh install.
 
-## On-headset
+| # | Check | Expected in log / view | Result |
+|---|---|---|---|
+| 9 | Permission denied | `Camera permission: denied`, no crash | |
+| 10 | Permission granted | `Camera permission: granted`, preview appears | |
+| 11 | Real camera selected | `Selected passthrough camera id=… position=… stream=WxH` — id from enumeration, not hard-coded | |
+| 12 | Orientation | Scene upright, not mirrored | |
+| 13 | Aspect ratio | Matches the `stream=WxH` in step 11, no stretch | |
+| 14 | Colour | Neutral objects look neutral; no red/blue swap, no green cast | |
+| 15 | Pause/resume ×10 | 10 × `PAUSE`+`RESUME`, preview back every time — count: ___/10 | |
+| 16 | Clean exit | `Quest Camera Capture stopped cleanly` | |
+| 17 | No errors all session | see command below → `0` | |
 
-Run in the order given by `plan.md` Group 5, in one session.
+```bash
+grep -ciE "error|failed|leak|validation layer" /tmp/m9-session.log
+```
 
-- [ ] Permission denied path — app reports denial, does not crash: ________
-- [ ] Permission granted path — capture starts: ________
-- [ ] Passthrough source selected without a hard-coded ID — log line: ________
-- [ ] Orientation correct on the diagnostic quad: ________
-- [ ] Aspect ratio correct: ________
-- [ ] Colour correct (no R/B swap, no chroma plane mix-up): ________
-- [ ] Pause/resume — ____/10 cycles returned capture
-- [ ] 15-minute run completed — actual duration: ________
-- [ ] Memory bounded — start ____ MB, mid ____ MB, end ____ MB
-- [ ] Overwritten-frame count advances under load — start ____, end ____
-- [ ] Clean exit, no leaked OpenXR handles: ________
-- [ ] No Camera2, OpenXR, Vulkan, or lifecycle errors in the session log: ________
+## 15-minute run — from the PERF counters
 
-## Fixture and privacy
+The app logs one `PERF {…}` JSON line per second. Read the counters:
 
-- [ ] Exactly one frame armed by Volume Down — captures written: ________
-- [ ] Log reported path and byte count only, no pixel contents: ________
-- [ ] Capture pulled via `run-as`; only the selected directory left the device
-- [ ] Every pixel reviewed for people, screens, documents, addresses, other private content
-- [ ] Reviewer: ________ · Date: ________ · Scene: ________
-- [ ] Calibration provenance recorded: ________
-- [ ] Scene contains at least two physical object classes usable by Milestone 10: ________
-- [ ] Approved fixture committed at: ________
+```bash
+grep -o 'PERF {.*' /tmp/m9-session.log | sed 's/^PERF //' \
+  | jq -r '.counters | [.received,.consumed,.source_overwrite,.queue_current,.queue_high_water] | @tsv' \
+  | awk 'NR==1 || NR%60==0'
+```
+
+| # | Check | Expected | Result |
+|---|---|---|---|
+| 18 | Ran the full 15 min | ~900 `PERF` lines | |
+| 19 | Frames kept arriving | `received` rises to the end | first ___ → last ___ |
+| 20 | Frames dropped, not queued | `source_overwrite` rises | first ___ → last ___ |
+| 21 | Queue stays capacity-one | `queue_current` ≤ 1 | max ___ |
+| 22 | Queue never backed up | `queue_high_water` ≤ 1 | ___ |
+| 23 | No conversion failures | `conversion_failure_window` stays `0` | ___ |
+| 24 | Memory flat | `adb shell dumpsys meminfo com.olibartfast.questlab.questcamera` at start / mid / end | ___ / ___ / ___ MB |
+
+If `queue_high_water` exceeds 1, or `received` climbs while `consumed` and
+`source_overwrite` both stall, the frame loop is being blocked — that is a
+`[!]`, not a rounding detail.
+
+## Fixture
+
+| # | Check | Expected | Result |
+|---|---|---|---|
+| 25 | Exactly one capture armed | one dir under `files/captures/` | count ___ |
+| 26 | Log shows path and size only, no pixels | `Private camera capture saved: path=… bytes=…` | |
+| 27 | Four files present | `y.bin`, `u.bin`, `v.bin`, `manifest.qcam` | |
+| 28 | Only that directory left the device | | |
+| 29 | Every pixel reviewed | no people, screens, documents, addresses | |
+| 30 | Reviewer / date / scene recorded | | ___ / ___ / ___ |
+| 31 | ≥2 COCO-detectable objects for M10 | which: ___ | |
+| 32 | Fixture committed | path: ___ | |
 
 ## Replay
 
-- [ ] Replay RGBA output byte-for-byte identical to live conversion: ________
-- [ ] `ComputeQuestCameraPixelSha256` matches the hash in `manifest.qcam`: ________
-- [ ] Replay equality covered by a host test that CI runs: ________
+| # | Check | Expected | Result |
+|---|---|---|---|
+| 33 | Replay RGBA == live RGBA | byte-for-byte identical | |
+| 34 | Hash matches manifest | `ComputeQuestCameraPixelSha256` == `pixel_sha256` in `manifest.qcam` | |
+| 35 | CI covers replay equality | host test added | |
 
-## Definition of Done
+---
 
-Milestone 9 closes when:
+## Done when
 
-- Every check above carries a measured value, a device, and a date.
-- App 09 showed a live feed from a real passthrough camera, logged correct
-  metadata, survived the lifecycle and long-run checks, and exited cleanly.
-- Exactly one approved, privacy-reviewed fixture is committed, and replaying
-  it reproduces the live conversion byte-for-byte.
-- Switching between Meta and replay sources required only configuration.
-- The Milestone 9 status line in `ROADMAP.md` states the real verdict. Any
-  `[!]` is carried forward as named debt, in the manner of Milestone 16's
-  `PASS_WITH_DEBT` — not quietly dropped.
-- Milestone 10's host-oracle agreement check is unblocked, and Phase 1 of
-  `specs/roadmap.md` says so.
+- Every row above has a number, a headset, and a date.
+- App 09 showed a live feed from a real passthrough camera, survived 10
+  pause/resume cycles and 15 minutes of capture, and exited cleanly.
+- One reviewed, approved fixture is committed, and replaying it reproduces the
+  live conversion byte-for-byte.
+- Switching Meta ↔ replay needed only configuration.
+- `ROADMAP.md`'s Milestone 9 status states the real verdict. Every `[!]` is
+  carried forward as named debt, as Milestone 16 did with `PASS_WITH_DEBT`.
+- Milestone 10's oracle check is unblocked and `specs/roadmap.md` Phase 1 says so.
 
-**Verdict:** ________ **Date:** ________
+**Verdict:** `________` **Date:** `________`
