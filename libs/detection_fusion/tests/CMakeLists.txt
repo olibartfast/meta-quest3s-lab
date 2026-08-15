@@ -1,0 +1,4 @@
+add_executable(detection_fusion_tests detection_fusion_tests.cpp)
+target_link_libraries(detection_fusion_tests PRIVATE detection_fusion)
+target_compile_options(detection_fusion_tests PRIVATE -Wall -Wextra -Wpedantic)
+add_test(NAME detection_fusion_tests COMMAND detection_fusion_tests)
