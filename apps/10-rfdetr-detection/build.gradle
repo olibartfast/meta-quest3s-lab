@@ -1,0 +1,89 @@
+plugins {
+    id "com.android.application"
+}
+
+def validationEnabled =
+    providers.gradleProperty("questVulkanValidation")
+        .orElse("false")
+        .get()
+        .toBoolean()
+def onnxRuntimeRoot = file(
+    "${rootProject.projectDir}/build/dependencies/onnxruntime-android-1.21.0"
+)
+
+android {
+    // Reuse the proven Milestone 9 Camera2 activity and permission bridge.
+    namespace "com.olibartfast.questlab.questcamera"
+    compileSdk 34
+    buildToolsVersion "34.0.0"
+    ndkVersion "29.0.14206865"
+
+    defaultConfig {
+        applicationId "com.olibartfast.questlab.rfdetrdetection"
+        minSdk 34
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+        buildConfigField(
+            "String",
+            "NATIVE_LIBRARY_NAME",
+            '"rfdetr_detection"'
+        )
+
+        externalNativeBuild {
+            cmake {
+                arguments(
+                    "-DANDROID_STL=c++_static",
+                    "-DONNXRUNTIME_ROOT=${onnxRuntimeRoot.absolutePath}",
+                    "-DQUESTLAB_ENABLE_ONNXRUNTIME=ON",
+                    "-DQUEST_ENABLE_VULKAN_VALIDATION=" +
+                        (validationEnabled ? "ON" : "OFF")
+                )
+                cppFlags "-std=c++17", "-Wall", "-Wextra", "-Wpedantic"
+                targets "rfdetr_detection"
+            }
+        }
+
+        ndk {
+            abiFilters "arm64-v8a"
+        }
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs = ["../09-quest-camera/src/main/java"]
+            jniLibs.srcDirs = ["${onnxRuntimeRoot.absolutePath}/jni"]
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+        }
+        release {
+            debuggable false
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file("CMakeLists.txt")
+            version "3.22.1"
+        }
+    }
+
+    buildFeatures {
+        prefab true
+        buildConfig true
+    }
+}
+
+dependencies {
+    implementation "org.khronos.openxr:openxr_loader_for_android:1.1.51"
+}
