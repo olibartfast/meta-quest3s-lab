@@ -493,13 +493,22 @@ packaging, execution off the render thread, frame correlation, and the
 unprojection and pose chain, not model export or host C++ inference, which are
 already covered.
 
-**This milestone does not draw 3D boxes.** A monocular detection determines a
-direction and nothing more: no range, no extent, no orientation. An earlier
-revision placed a box at an operator-set distance; because that box had to face
-the camera to have any shape at all, it rendered as a billboard, which is a 2D
-overlay pinned in space. It has been removed rather than refined. What is drawn
-is what is measured — bearing rays in `LOCAL`, plus a 2D diagnostic preview.
-Milestone 14 draws the first 3D box, using measured depth.
+**Superseded on disk: app 10 now draws depth-fused 3D boxes.** This section is
+kept for the reasoning, which still governs. A monocular detection determines a
+direction and nothing more. An earlier revision placed a box at an operator-set
+distance; because that box had to face the camera to have any shape at all, it
+rendered as a billboard, and it was removed rather than refined. Bearing rays
+replaced it and were then also rejected: they emanate from the viewer's own eye
+position, so they read as a starburst rather than as a located object.
+
+What app 10 draws today is a metric box fused from `XR_META_environment_depth`,
+and only when depth supports a metric fit — otherwise nothing is drawn, so a
+depth failure stays visible. Boxes whose far face came from a prior are tinted;
+orientation comes from a RANSAC plane, or falls back to the viewing bearing
+marked as a display convention. This absorbs the mechanism of Milestones 12 and
+14 into app 10. **It does not discharge them:** neither the depth accuracy of
+Milestone 12 nor the IoU, centre, extent, and jitter measurements of Milestone
+14 have been taken on a headset.
 
 ## Tasks
 
@@ -535,10 +544,11 @@ Milestone 14 draws the first 3D box, using measured depth.
 App 10 detects real objects on Quest 3/3S from live and replayed camera frames,
 with inference on device or streamed to a host by configuration alone. Every
 result is tied to the frame that produced it, stale and mismatched results are
-withheld, bearing rays are rendered in stereo over passthrough, both backends
-reproduce the host reference within stated tolerances, and measured OpenXR frame
-phases are unchanged while inference runs. No distance, extent, or orientation
-is rendered or claimed.
+withheld, depth-fused metric boxes are rendered in stereo over passthrough with
+nothing drawn when depth supplies no fit, both backends reproduce the host
+reference within stated tolerances, and measured OpenXR frame phases are
+unchanged while inference runs. Any dimension taken from a prior rather than
+from depth is visibly marked as such.
 
 ---
 
@@ -614,10 +624,14 @@ platform failures from recoverable calibration and validation debt.
 
 # Milestone 12 — Environment Depth
 
-**Status:** Planned in `specs/milestone-plans/milestone12-plan.md`; scope under
-review after the Milestone 16 result. Retain it for occlusion, raycasts, and
-coarse scene geometry; do not assume it is registered object depth for RF-DETR
-boxes.
+**Status:** Partially implemented on disk, ahead of this plan. `libs/depth_source`
+exists with a Meta `XR_META_environment_depth` adapter, metric conversion, and
+host tests, and app 10 already starts it, acquires a depth image per frame, and
+consumes it. What remains is this milestone's actual evidence: a standalone
+depth application, the diagnostic visualization and probe, and measured error
+against several physical surfaces. Nothing here has been validated on a
+headset. Retain the milestone for occlusion, raycasts, and coarse scene
+geometry; do not assume it is registered object depth for RF-DETR boxes.
 
 ## Goal
 
@@ -705,9 +719,14 @@ in Milestone 10. If the follow-up gate passes, this milestone must consume
 depth from the same stereo pair and isolate the object inside the detection;
 box-only Environment Depth sampling is not the production design.
 
-**This is the first milestone that renders a 3D box.** It is the point at which
-range, extents, and orientation are all measured rather than assumed, which is
-why no earlier milestone draws one.
+**The fusion mechanism already exists in app 10.** `libs/detection_fusion`
+clusters depth samples inside a detection and produces a metric centre,
+conservative extents, and a fusion confidence, and app 10 renders the result.
+So this milestone no longer introduces 3D boxes — it is now the milestone that
+**measures whether they are right**: 2D IoU, depth error, 3D centre error,
+extent error, and jitter, against at least two real physical object classes.
+None of those numbers exist yet. Until they do, the boxes app 10 draws are a
+mechanism, not a validated result.
 
 ## Goal
 

@@ -36,12 +36,14 @@ adb logcat -s RFDetrDetection:V QuestCamera:V OpenXR:V '*:S'
 ```
 
 The app starts with only the world-space detection geometry over passthrough;
-the flat diagnostic is hidden. The right thumbstick changes assumed placement
-distance from 0.5 to 5 metres, and A resets it to 2 metres. B toggles the
-head-locked 2D diagnostic. Detection class,
-confidence, frame age, inference time, backend health, assumed range, and drop
-counts are drawn into that diagnostic. Orange world geometry is deliberately
-used for assumed range; it is not a depth measurement.
+the flat diagnostic is hidden. B toggles the head-locked 2D diagnostic.
+Detection class, confidence, frame age, inference time, backend health,
+measured range, and drop counts are drawn into that diagnostic.
+
+World geometry is a metric 3D box fused from environment depth. A box is drawn
+only when depth supported a metric fit; otherwise nothing is drawn. Boxes whose
+far face came from a prior rather than from depth are tinted so the assumed
+dimension stays legible.
 
 ## Backends
 
@@ -131,8 +133,12 @@ These tests do not replace headset world-locking measurements.
 Milestone 13 has not yet established the Camera2-to-OpenXR timestamp mapping.
 App 10 therefore records the most recent head pose when the capture is consumed,
 marks that pose as substituted, and logs the limitation. Rapid head motion can
-produce angular error. Range is also unavailable: the controller-set distance
-is explicitly assumed. Neither limitation is silently presented as measured.
+produce angular error.
+
+Range comes from environment depth, not from an operator setting. Its accuracy
+has not been measured on a headset, and the depth image has its own time, pose,
+and field of view, so the fusion is not yet validated against physical
+measurements. Neither limitation is silently presented as measured.
 
 ## Artifact pins and validation state
 
