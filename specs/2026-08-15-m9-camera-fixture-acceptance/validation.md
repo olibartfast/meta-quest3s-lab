@@ -5,8 +5,9 @@ Fill in the **Result** column as you go. `[x]` passed · `[ ]` not run ·
 
 A tick with no number is not a result.
 
-**Commit under test:** `________` · **Headset:** Quest 3 / 3S `________`
-**Date:** `________` · **Session log:** `/tmp/m9-session.log`
+**Commit under test:** `de03f98` · **Headset:** Quest 3 `2G0YC5ZH0K0293`
+(HorizonOS build `52345320040100520`, Android 14)
+**Date:** `2026-08-15` · **Session log:** `/tmp/m9-session.log`
 
 ---
 
@@ -14,14 +15,42 @@ A tick with no number is not a result.
 
 | # | Check | Command | Result |
 |---|---|---|---|
-| 1 | Tree committed | `git status --short` → empty | |
-| 2 | No build output committed | `git status -uall \| grep -c "build/\|\.cxx/"` → `0` | |
-| 3 | App 10 docs fixed | `grep -rn "assumed\|thumbstick" apps/10-rfdetr-detection/README.md docs/rfdetr-detection.md` → no range-box hits | |
-| 4 | M12/M14 status honest | `ROADMAP.md` names the code on disk | |
-| 5 | camera_source tests | `ctest --test-dir build/camera-source-tests` → all pass | |
-| 6 | APK builds | `./scripts/build_deploy.sh --app 09-quest-camera --build-only` → exit 0 | |
-| 7 | Source switching needs no code edit | Both apps pass `CameraSourceKind` through `CreateCameraSource` | |
-| 8 | Scene prepared, reviewer agreed | | |
+| 1 | Tree committed | `git status --short` → empty | `[x]` 6 commits, `6323421`..`bf1359a`, 2026-08-15 |
+| 2 | No build output committed | `git status -uall \| grep -c "build/\|\.cxx/"` → `0` | `[x]` 0 |
+| 3 | App 10 docs fixed | `grep -rn "assumed\|thumbstick" apps/10-rfdetr-detection/README.md docs/rfdetr-detection.md` → no range-box hits | `[x]` fixed in `de03f98` |
+| 4 | M12/M14 status honest | `ROADMAP.md` names the code on disk | `[x]` `de03f98` |
+| 5 | camera_source tests | `ctest --test-dir build/camera-source-tests` → all pass | `[x]` 1/1 passed, 0.01 s |
+| 6 | APK builds | `./scripts/build_deploy.sh --app 09-quest-camera --build-only` → exit 0 | `[x]` BUILD SUCCESSFUL 17 s, 3.75 MB |
+| 7 | Source switching needs no code edit | Both apps pass `CameraSourceKind` through `CreateCameraSource` | `[!]` **fails** — see below |
+| 8 | Scene prepared, reviewer agreed | | `[ ]` |
+
+### `[!]` Check 7 — switching to Replay by configuration alone exits the app
+
+Both apps do construct through the factory, but then require the concrete
+adapter back out of it:
+
+```cpp
+// apps/09-quest-camera/src/main/cpp/main.cpp:470
+auto* metaCamera = dynamic_cast<questlab::camera::MetaCamera2Adapter*>(camera.get());
+if (camera == nullptr || metaCamera == nullptr) {
+    questlab::LogError("Meta Camera2 source factory failed");
+    ANativeActivity_finish(app->activity);   // app quits
+    return;
+}
+```
+
+Setting `CameraSourceKind::Replay` therefore makes the `dynamic_cast` return
+null and the app finish. `apps/10-rfdetr-detection/src/main/cpp/main.cpp:1333`
+has the same pattern.
+
+The cast exists because `gCameraAdapter` is the global the JNI callbacks reach
+through — the Java bridge delivers frames and permission state to the concrete
+Meta adapter. A replay run needs none of that, but the app exits before
+reaching the point where it would matter.
+
+Milestone 9's Definition of Done says *"Switching between Meta and replay
+sources requires only factory configuration."* That is not currently true.
+Recorded, not fixed: the fix is a separate change, per this spec's scope.
 
 ## In the headset
 
