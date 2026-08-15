@@ -212,11 +212,13 @@ of P1A or P2, or unbounded timing, is a hard fail.
   capture time into `LOCAL`. Milestones 13 and 14 are rewritten against that
   base; Milestone 12 keeps only its independent value as an occlusion and
   raycast source.
-- **Pass with debt** — first run a bounded per-device ChArUco/checkerboard
-  calibration and optical sync validation. Proceed to the ZED-like backend only
-  if rectification, metric scale, and physical exposure timing pass. The
-  calibration artifact is device-specific and must not be shipped as a
-  universal Quest constant.
+- **Pass with debt** — source the calibration model from the Meta Passthrough
+  Camera API (Camera2 intrinsics and lens-pose extrinsics) and first run a
+  bounded target-free validation of that model plus the optical sync
+  validation; no manual ChArUco/checkerboard procedure is planned. Proceed to
+  the ZED-like backend only if rectification, metric scale, and physical
+  exposure timing pass. The persisted calibration artifact is device-specific
+  and must not be shipped as a universal Quest constant.
 - **Partial** — a stereo backend restricted to static or slowly moving objects,
   adopted only as an explicit, documented scope reduction. It is still a better
   base than environment-depth fusion, because both images share one instant by

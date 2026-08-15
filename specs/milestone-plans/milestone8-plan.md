@@ -11,7 +11,7 @@ runtime-owned spatial anchor. It covers local, single-user persistence only.
 ## Comparison with the DeepSeek proposal
 
 The DeepSeek proposal is preserved at
-`docs/milestone8-plan-deepseekv4pro.md`.
+`specs/milestone-plans/milestone8-plan-deepseekv4pro.md`.
 
 Adopt from it:
 
