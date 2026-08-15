@@ -1,3 +1,31 @@
 plugins {
     id "com.android.application" version "8.2.0" apply false
 }
+
+subprojects { subproject ->
+    subproject.plugins.withId("com.android.application") {
+        def tracingEnabled = subproject.providers
+            .gradleProperty("questPerfettoTracing")
+            .orElse("false")
+            .get()
+            .toBoolean()
+        def androidExtension = subproject.extensions.getByName("android")
+        androidExtension.defaultConfig.externalNativeBuild.cmake.arguments.add(
+            "-DQUEST_ENABLE_PERFETTO_TRACING=" +
+                (tracingEnabled ? "ON" : "OFF")
+        )
+
+        def benchmarkBuild =
+            androidExtension.buildTypes.maybeCreate("benchmark")
+        benchmarkBuild.initWith(
+            androidExtension.buildTypes.getByName("release")
+        )
+        benchmarkBuild.debuggable = false
+        benchmarkBuild.minifyEnabled = false
+        benchmarkBuild.signingConfig =
+            androidExtension.signingConfigs.getByName("debug")
+        benchmarkBuild.applicationIdSuffix = ".benchmark"
+        benchmarkBuild.versionNameSuffix = "-benchmark"
+        benchmarkBuild.matchingFallbacks = ["release"]
+    }
+}
