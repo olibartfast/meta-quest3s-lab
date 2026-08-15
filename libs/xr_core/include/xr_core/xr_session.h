@@ -4,9 +4,12 @@
 
 #include <openxr/openxr.h>
 
+#include <memory>
 #include <vector>
 
 namespace questlab {
+
+class XrFrameTelemetry;
 
 struct XrFrameUpdateInfo {
     XrTime predictedDisplayTime = 0;
@@ -43,7 +46,7 @@ public:
 
 class XrSessionContext {
 public:
-    XrSessionContext() = default;
+    XrSessionContext();
     ~XrSessionContext();
 
     XrSessionContext(const XrSessionContext&) = delete;
@@ -59,6 +62,7 @@ public:
         XrFrameUpdater* updater = nullptr,
         XrUnderlayProvider* underlayProvider = nullptr);
     bool PumpEmptyFrame();
+    void SetPerformanceTelemetryEnabled(bool enabled);
     void RequestExit();
     void Shutdown();
 
@@ -70,6 +74,9 @@ public:
     XrSpace StageSpace() const { return stageSpace_; }
     bool HasStageSpace() const { return stageSpace_ != XR_NULL_HANDLE; }
     bool HasStageBounds() const { return stageBoundsAvailable_; }
+    bool IsPerformanceTelemetryEnabled() const {
+        return performanceTelemetryEnabled_;
+    }
     XrExtent2Df StageBounds() const { return stageBounds_; }
     XrViewConfigurationType ViewConfiguration() const { return viewConfiguration_; }
     XrEnvironmentBlendMode BlendMode() const { return blendMode_; }
@@ -95,9 +102,12 @@ private:
     XrEnvironmentBlendMode blendMode_ = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
     std::vector<XrViewConfigurationView> viewConfigurationViews_;
     std::vector<XrView> views_;
+    std::vector<const XrCompositionLayerBaseHeader*> layers_;
+    std::unique_ptr<XrFrameTelemetry> frameTelemetry_;
     bool running_ = false;
     bool shouldExit_ = false;
     bool invalidViewsLogged_ = false;
+    bool performanceTelemetryEnabled_ = true;
 };
 
 }  // namespace questlab

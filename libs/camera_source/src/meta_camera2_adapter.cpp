@@ -2,6 +2,7 @@
 
 #include <android/log.h>
 
+#include <algorithm>
 #include <utility>
 
 namespace questlab::camera {
@@ -161,6 +162,7 @@ bool MetaCamera2Adapter::TryConsumeLatest(RgbCapture* capture) {
     }
     std::lock_guard<std::mutex> lock(mutex_);
     ++stats_.consumedFrames;
+    stats_.currentQueueDepth = 0;
     return true;
 }
 
@@ -174,6 +176,7 @@ void MetaCamera2Adapter::Stop() {
     queue_.Clear();
     std::lock_guard<std::mutex> lock(mutex_);
     stats_.health = CameraHealth::Stopped;
+    stats_.currentQueueDepth = 0;
 }
 
 void MetaCamera2Adapter::SetPermissionState(bool granted) {
@@ -203,6 +206,9 @@ void MetaCamera2Adapter::OnFrame(RgbCapture capture) {
     const bool overwritten = queue_.Publish(std::move(capture));
     std::lock_guard<std::mutex> lock(mutex_);
     ++stats_.receivedFrames;
+    stats_.currentQueueDepth = 1;
+    stats_.queueHighWaterMark =
+        std::max<uint64_t>(stats_.queueHighWaterMark, 1);
     if (overwritten) {
         ++stats_.overwrittenFrames;
     }

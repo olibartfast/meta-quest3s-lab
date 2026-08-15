@@ -20,6 +20,7 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
+        buildConfigField "String", "NATIVE_LIBRARY_NAME", '"quest_camera"'
 
         externalNativeBuild {
             cmake {
@@ -62,6 +63,7 @@ android {
 
     buildFeatures {
         prefab true
+        buildConfig true
     }
 }
 

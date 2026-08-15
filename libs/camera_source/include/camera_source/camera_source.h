@@ -45,6 +45,10 @@ struct CameraIntrinsics {
 };
 
 struct CameraPose {
+    // Android Camera2 calibration extrinsics. orientation is
+    // LENS_POSE_ROTATION (sensor/head axes to camera optical axes), while
+    // position is LENS_POSE_TRANSLATION (the optical center expressed in the
+    // sensor/head axes). These fields must not be composed as one rigid pose.
     std::array<float, 4> orientation = {0.0F, 0.0F, 0.0F, 1.0F};
     std::array<float, 3> position{};
     bool valid = false;
@@ -83,6 +87,8 @@ struct CameraSourceStats {
     uint64_t consumedFrames = 0;
     uint64_t overwrittenFrames = 0;
     uint64_t invalidFrames = 0;
+    uint64_t currentQueueDepth = 0;
+    uint64_t queueHighWaterMark = 0;
     std::string lastError;
 };
 
