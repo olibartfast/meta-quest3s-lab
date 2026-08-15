@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meta-quest3-lab.local/schemas/questlab.performance.v1.json",
+  "title": "Quest Lab performance window",
+  "type": "object",
+  "required": [
+    "schema",
+    "severity",
+    "category",
+    "metric_name",
+    "unit",
+    "run_id",
+    "window_start_monotonic_ns",
+    "window_end_monotonic_ns",
+    "warmup",
+    "counters",
+    "durations",
+    "duration_fields",
+    "run_identity",
+    "scenario_id",
+    "runtime_metrics"
+  ],
+  "properties": {
+    "schema": {
+      "const": "questlab.performance.v1"
+    },
+    "severity": {
+      "enum": ["debug", "info", "warning", "error"]
+    },
+    "category": {
+      "type": "string",
+      "minLength": 1
+    },
+    "metric_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "unit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "window_start_monotonic_ns": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "window_end_monotonic_ns": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "warmup": {
+      "type": "boolean"
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "durations": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/durationSummary"
+      }
+    },
+    "duration_fields": {
+      "const": ["count", "mean", "p50", "p95", "p99", "max", "overflow"]
+    },
+    "run_identity": {
+      "$ref": "#/$defs/runIdentity"
+    },
+    "scenario_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_metrics": {
+      "$ref": "#/$defs/runtimeMetrics"
+    }
+  },
+  "$defs": {
+    "durationSummary": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "integer", "minimum": 0},
+        {"type": "number", "minimum": 0},
+        {"type": "number", "minimum": 0},
+        {"type": "number", "minimum": 0},
+        {"type": "number", "minimum": 0},
+        {"type": "number", "minimum": 0},
+        {"type": "integer", "minimum": 0}
+      ],
+      "minItems": 7,
+      "maxItems": 7
+    },
+    "runIdentity": {
+      "type": "object",
+      "required": [
+        "git_sha",
+        "app",
+        "package",
+        "build_type",
+        "instrumentation_enabled",
+        "device",
+        "horizon_os",
+        "refresh_rate_hz",
+        "power_state",
+        "tether_state"
+      ],
+      "properties": {
+        "git_sha": {"type": "string", "minLength": 7},
+        "app": {"type": "string", "minLength": 1},
+        "package": {"type": "string", "minLength": 1},
+        "build_type": {"enum": ["debug", "benchmark"]},
+        "instrumentation_enabled": {"type": "boolean"},
+        "device": {"type": "string", "minLength": 1},
+        "horizon_os": {"type": "string", "minLength": 1},
+        "refresh_rate_hz": {"enum": [72, 90, 120]},
+        "power_state": {"type": "string", "minLength": 1},
+        "tether_state": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "runtimeMetrics": {
+      "type": "object",
+      "required": [
+        "source",
+        "fps",
+        "stale",
+        "app_gpu_milliseconds",
+        "gpu_percent",
+        "cpu_level",
+        "gpu_level"
+      ],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "fps": {"type": ["number", "null"], "minimum": 0},
+        "stale": {"type": ["integer", "null"], "minimum": 0},
+        "app_gpu_milliseconds": {"type": ["number", "null"], "minimum": 0},
+        "gpu_percent": {"type": ["number", "null"], "minimum": 0},
+        "cpu_level": {"type": ["integer", "null"], "minimum": 0},
+        "gpu_level": {"type": ["integer", "null"], "minimum": 0}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

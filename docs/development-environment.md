@@ -1,12 +1,10 @@
 # Development Environment
 
-## Current Application
+## Current Applications
 
-The repository contains three independently selectable Android applications.
-`XrPassthrough` is the preserved Meta/OpenGL ES baseline,
-`apps/01-openxr-bootstrap` is the empty-frame Milestone 1 lifecycle
-application, and `apps/02-vulkan-stereo-triangle` renders the Milestone 2
-stereo scene.
+The repository contains nine independently selectable repository-owned Android
+applications under `apps/`, covering the native OpenXR lifecycle through Quest
+Camera2 capture. `XrPassthrough` remains the preserved Meta/OpenGL ES baseline.
 
 ## Inspect the Toolchain
 
@@ -29,6 +27,7 @@ Use the repository-owned wrapper command:
 ```bash
 ./scripts/build_deploy.sh --app 01-openxr-bootstrap --build-only
 ./scripts/build_deploy.sh --app 02-vulkan-stereo-triangle --build-only
+./scripts/build_deploy.sh --app 09-quest-camera --build-only
 ./scripts/build_deploy.sh --app xrpassthrough --build-only
 ```
 
@@ -37,8 +36,23 @@ Application selection is explicit so the legacy baseline remains available. The 
 ```text
 apps/01-openxr-bootstrap/build/outputs/apk/debug/01-openxr-bootstrap-debug.apk
 apps/02-vulkan-stereo-triangle/build/outputs/apk/debug/02-vulkan-stereo-triangle-debug.apk
+apps/09-quest-camera/build/outputs/apk/debug/09-quest-camera-debug.apk
 XrPassthrough/Projects/Android/build/outputs/apk/debug/XrPassthrough-debug.apk
 ```
+
+For measurements, use the optimized `benchmark` variant. It uses the release
+native configuration, is non-debuggable, and is signed with the local debug
+key only to permit laboratory installation:
+
+```bash
+./scripts/build_deploy.sh \
+  --app 09-quest-camera \
+  --variant benchmark \
+  --build-only
+```
+
+Add `--perfetto-tracing` when a short ATRACE/Perfetto scheduling capture is
+required. Leave it off for the matching disabled-instrumentation comparison.
 
 ## Connect and Deploy
 

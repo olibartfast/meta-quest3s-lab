@@ -54,17 +54,21 @@ meta-quest3-lab/
 │   ├── 07-hand-tracking/
 │   ├── 08-spatial-anchors/
 │   ├── 09-quest-camera/
-│   ├── 11-rfdetr-live/
+│   ├── 10-rfdetr-detection/
 │   ├── 12-environment-depth/
 │   ├── 13-rgb-depth-alignment/
-│   └── 14-cv-spatial-overlay/
+│   ├── 14-cv-spatial-overlay/
+│   └── 16-stereo-probe/
 ├── libs/
 │   ├── xr_core/
 │   ├── vulkan_renderer/
 │   ├── xr_math/
+│   ├── perf_telemetry/
 │   ├── spatial_ui/
 │   ├── camera_source/
 │   ├── depth_source/
+│   ├── object_detector/
+│   ├── perf_telemetry/
 │   ├── sensor_rig/
 │   └── perception_protocol/
 ├── tools/
@@ -287,6 +291,9 @@ The headset shows passthrough with a stable repository-owned Vulkan object compo
 
 # Milestone 6 — Stable Spatial Object
 
+**Status:** Implemented on disk; Quest 3/3S interaction, stability, lifecycle,
+and performance acceptance is pending.
+
 ## Goal
 
 Place a virtual object in the physical environment and keep it visually stable while the user moves.
@@ -312,6 +319,9 @@ The user can place a cube or marker in the room, move around it, and reset or re
 ---
 
 # Milestone 7 — Hand Tracking
+
+**Status:** Implemented on disk; Quest 3/3S hand-visualization, pinch,
+tracking-loss, lifecycle, and performance acceptance is pending.
 
 ## Goal
 
@@ -340,6 +350,9 @@ Both hands are visualized when tracked, and a pinch gesture can trigger an inter
 
 # Milestone 8 — Spatial Anchors
 
+**Status:** Implemented on disk; Quest 3/3S create, persist, restore, failure,
+lifecycle, and performance acceptance is pending.
+
 ## Goal
 
 Persist or restore virtual content at meaningful physical locations when supported by the runtime.
@@ -367,23 +380,49 @@ A user can create an anchor, attach a virtual marker to it, and restore it accor
 ## Computer-Vision Milestone Ladder
 
 ```text
-M9 Quest RGB camera ──► M10 offline RF-DETR ──► M11 live RF-DETR 2D ──┐
-          │                                                           │
-          └────────► M12 environment depth ──► M13 RGB-depth alignment ├─► M14 spatial overlay
-                                                                      │
-                                             validated inputs ────────┘
+M9 Quest RGB camera ──► M16 stereo probe ──► API-calibration + optical-sync gate
+          │                                      │
+          │                                      └─► same-pair stereo depth ─┐
+          └────────► M10 RF-DETR detection ──────────────────────────────────┼─► revised M14
+                                                                             │
+M12 environment depth ──► occlusion, raycasts, coarse scene geometry ────────┘
 ```
 
-Each milestone introduces one principal uncertainty:
+**Capability and calibration first.** Milestone 16 measured a viable concurrent
+left/right transport but found no factory distortion arrays or certified
+optical sync relationship. The stereo calibration model is sourced from the
+Meta Passthrough Camera API rather than a manual target procedure: intrinsics
+from Camera2 `LENS_INTRINSIC_CALIBRATION` and per-camera extrinsics from
+`LENS_POSE_ROTATION`/`LENS_POSE_TRANSLATION`. The next work is the bounded
+software validation of that API-provided model — reprojection consistency and
+rectified vertical disparity measured on live scenes — plus the optical timing
+gate recorded in `docs/stereo-capability.md`. No production stereo-depth or
+object-pose claim may precede that gate.
+
+Environment Depth remains independently valuable, but it is no longer the
+assumed object-ranging input for RF-DETR. Its image has its own time, pose, and
+field of view, while a detection box is not an object mask.
+
+Each milestone introduces one principal uncertainty. Model export and host C++
+inference are deliberately *not* a milestone: that ground is already covered by
+existing work, so the host pipeline in `tools/` serves as the reference oracle
+that the on-device path is measured against.
 
 | Milestone | New uncertainty | Observable result |
 |---|---|---|
 | 9 | camera API and adapter lifecycle | live/replayed RGB preview |
-| 10 | RF-DETR export and C++ inference | annotated recorded images |
-| 11 | live transport and frame correlation | 2D boxes on the exact RGB frame |
+| 16 | concurrent stereo topology, timing, and calibration availability | pixel-free capability report and explicit debt |
 | 12 | Meta depth acquisition and metric conversion | depth view and distance probe |
 | 13 | time and coordinate registration | depth samples aligned over RGB |
+| 10 | inference in the XR frame loop, and image-to-bearing projection | frame-correlated detections, world-space bearing rays |
+| 11 | transport fault tolerance | streaming backend survives server faults |
 | 14 | detection/depth fusion | world-locked metric 3D boxes |
+
+A monocular detection yields a bearing and nothing else. Milestone 10 therefore
+renders bearing rays and a 2D diagnostic preview, and makes no claim about
+distance, extent, or orientation. Milestone 14 is the first milestone that draws
+a 3D box, and by then it has measured range, depth-clustered extents, and a real
+orientation convention.
 
 ---
 
@@ -434,46 +473,85 @@ or depth is required.
 
 ---
 
-# Milestone 10 — Offline RF-DETR Detection
+# Milestone 10 — RF-DETR Detection and Bearing
 
-**Status:** Planned in `specs/milestone-plans/milestone10-plan.md`; blocked by Milestone 9.
+**Status:** Core implementation complete; headset acceptance measurements are
+pending. App 10, all three detector adapters, Android ONNX Runtime packaging,
+projection tests, the host service, one-command deployment, and Quest launch are
+implemented. Approved-fixture agreement and 15-minute thermal evidence remain
+blocked by the Milestone 9 fixture and an operator-in-headset run.
+
+**Sequenced after Milestones 12 and 13.** The detector runs on Quest today, but
+its output is not spatially useful until range exists.
 
 ## Goal
 
-Run a pinned RF-DETR model on recorded Quest RGB frames through a repeatable
-host pipeline. This milestone proves model export, preprocessing,
-postprocessing, and C++ inference without live networking or XR timing.
+Run RF-DETR from the Quest — on the headset or on a streaming host, selected by
+configuration — correlate every result to the frame that produced it, and
+project each detection into a `LOCAL` bearing. This milestone proves inference
+packaging, execution off the render thread, frame correlation, and the
+unprojection and pose chain, not model export or host C++ inference, which are
+already covered.
+
+**This milestone does not draw 3D boxes.** A monocular detection determines a
+direction and nothing more: no range, no extent, no orientation. An earlier
+revision placed a box at an operator-set distance; because that box had to face
+the camera to have any shape at all, it rendered as a billboard, which is a 2D
+overlay pinned in space. It has been removed rather than refined. What is drawn
+is what is measured — bearing rays in `LOCAL`, plus a 2D diagnostic preview.
+Milestone 14 draws the first 3D box, using measured depth.
 
 ## Tasks
 
-- Pin the RF-DETR checkpoint and export environment.
-- Export RF-DETR to ONNX with a machine-readable model manifest.
-- Record input shape, colour order, normalization, resize, and padding.
-- Save reference detections from the RF-DETR implementation.
-- Implement equivalent C++ inference with ONNX Runtime.
-- Undo letterboxing and report boxes in original Quest-image coordinates.
-- Compare C++ results against the reference within explicit tolerances.
-- Produce annotated output images and timing reports.
+- Define an engine-independent object-detector interface, factory, and health
+  contract.
+- Package a pinned ONNX Runtime build for `arm64-v8a` into an OpenXR/Vulkan APK.
+- Implement on-device, streaming, and replay detector adapters behind one
+  interface.
+- Run inference on worker threads with bounded, newest-frame submission.
+- Correlate results to the originating frame ID and expire stale results.
+- Unproject 2D boxes into `LOCAL` bearing rays through the RGB intrinsics and
+  camera pose, with inverse distortion documented.
+- Render bearing rays in stereo over passthrough, and keep a 2D diagnostic
+  preview. Claim no distance, extent, or orientation.
+- Verify model identity at model load and negotiate it at service connect.
+- Reproduce the host reference from both backends within stated tolerances.
+- Measure latency, frame-delivery impact, and thermal behaviour per backend, and
+  select a documented default.
 
 ## Deliverables
 
-- `tools/rfdetr_export`.
-- `tools/rfdetr_inference`.
-- A model manifest and reproducible export instructions.
-- Approved replay inputs and expected detection metadata.
+- `apps/10-rfdetr-detection`.
+- `libs/object_detector`.
+- `libs/detection_projection`.
+- Android arm64 ONNX Runtime packaging.
+- A minimal detection service wrapping the reference oracle.
+- `docs/rfdetr-detection.md`.
+- `tools/rfdetr_export` and `tools/rfdetr_inference` retained as the pinned
+  export environment and host reference oracle.
 
 ## Definition of Done
 
-The C++ inference tool detects real objects in approved recorded Quest images,
-matches RF-DETR reference results within documented tolerances, and reports
-preprocessing, inference, and postprocessing time separately.
+App 10 detects real objects on Quest 3/3S from live and replayed camera frames,
+with inference on device or streamed to a host by configuration alone. Every
+result is tied to the frame that produced it, stale and mismatched results are
+withheld, bearing rays are rendered in stereo over passthrough, both backends
+reproduce the host reference within stated tolerances, and measured OpenXR frame
+phases are unchanged while inference runs. No distance, extent, or orientation
+is rendered or claimed.
 
 ---
 
 # Milestone 11 — Live RF-DETR 2D Detection
 
-**Status:** Planned in `specs/milestone-plans/milestone11-plan.md`; blocked by Milestones 9 and
-10.
+**Status:** Planned in `specs/milestone-plans/milestone11-plan.md`; blocked by
+Milestones 9 and 10. **Rescoped.** Milestone 10 introduces the streaming
+detector adapter and a minimal service on a trusted local link, so this
+milestone no longer adds an application or a detection capability. It hardens the transport that already
+exists: explicit protocol versioning, negotiation failure, overload shedding,
+disconnect and reconnect behaviour, malformed and duplicate frame handling, and
+fault-injection coverage. `apps/11-rfdetr-live` is therefore dropped in favour
+of extending `apps/10-rfdetr-detection`.
 
 ## Goal
 
@@ -496,22 +574,50 @@ metric 3D.
 
 ## Deliverables
 
-- `apps/11-rfdetr-live`.
-- `libs/perception_protocol`.
-- `tools/rfdetr_inference_server`.
+- `libs/perception_protocol`, extracted from the Milestone 10 streaming adapter.
+- `tools/rfdetr_inference_server`, hardened from the Milestone 10 service.
 - Host codec, framing, and fault-injection tests.
+- Extensions to `apps/10-rfdetr-detection`; no new application.
 
 ## Definition of Done
 
-The headset preview shows real RF-DETR boxes over the exact originating Quest
-RGB frame for at least two physical object classes. Queues remain bounded,
-stale results are hidden, and reconnect works without restarting OpenXR.
+The streaming backend of app 10 survives server absence, overload, disconnect,
+reconnect, protocol-version mismatch, and malformed or duplicate responses
+without restarting OpenXR. Queues remain bounded, stale results stay hidden, and
+the frame loop runs at full rate throughout every fault.
+
+---
+
+# Milestone 16 — Stereo Capability Probe
+
+**Status:** Implemented and measured on Quest 3. Verdict:
+`PASS_WITH_DEBT`. P1A, P2, P3, and P4 passed. P1B is addressed by consuming
+the intrinsics and lens-pose extrinsics that the Meta Passthrough Camera API
+exposes through Camera2 and validating them in software; no manual target
+calibration is planned. P3O still requires an optical synchronization
+validation. See `specs/milestone-plans/milestone16-plan.md` and
+`docs/stereo-capability.md`.
+
+## Goal
+
+Measure whether the left and right passthrough RGB cameras provide a viable
+same-pair stereo foundation before committing Milestones 12–14 to an
+environment-depth fusion design.
+
+## Definition of Done
+
+The pixel-free probe builds, deploys, captures more than 300 concurrent pairs,
+writes a machine-readable report, and a host evaluator distinguishes hard
+platform failures from recoverable calibration and validation debt.
 
 ---
 
 # Milestone 12 — Environment Depth
 
-**Status:** Planned in `specs/milestone-plans/milestone12-plan.md`; blocked by Milestone 9 only.
+**Status:** Planned in `specs/milestone-plans/milestone12-plan.md`; scope under
+review after the Milestone 16 result. Retain it for occlusion, raycasts, and
+coarse scene geometry; do not assume it is registered object depth for RF-DETR
+boxes.
 
 ## Goal
 
@@ -551,8 +657,10 @@ the generic depth-source interface.
 
 # Milestone 13 — RGB and Depth Alignment
 
-**Status:** Planned in `specs/milestone-plans/milestone13-plan.md`; blocked by Milestones 9 and
-12.
+**Status:** Plan requires revision after Milestone 16. Camera2-to-OpenXR time
+correlation remains required for either stereo or environment-depth geometry.
+The RGB-to-environment-depth path is no longer automatically the primary object
+ranging design.
 
 ## Goal
 
@@ -591,8 +699,15 @@ blocker rather than hidden by an approximation.
 
 # Milestone 14 — RF-DETR Spatial Overlay
 
-**Status:** Planned in `specs/milestone-plans/milestone14-plan.md`; blocked by Milestones 11 and
-13.
+**Status:** Plan requires revision after the Milestone 16 calibration and
+optical-sync gate. A working frame-correlated detection source already exists
+in Milestone 10. If the follow-up gate passes, this milestone must consume
+depth from the same stereo pair and isolate the object inside the detection;
+box-only Environment Depth sampling is not the production design.
+
+**This is the first milestone that renders a 3D box.** It is the point at which
+range, extents, and orientation are all measured rather than assumed, which is
+why no earlier milestone draws one.
 
 ## Goal
 
@@ -628,6 +743,11 @@ completion.
 
 # Milestone 15 — Performance and Production Quality
 
+**Status:** Instrumentation, benchmark-build, host-quality, schema, capture,
+and architecture foundations are implemented. Device baselines, measured
+optimizations, media, and final acceptance remain blocked by outstanding
+acceptance for Milestones 1–3 and 6–9 and implementation of Milestones 10–14.
+
 ## Goal
 
 Improve the experiments with performance instrumentation, robustness, documentation, and production-quality engineering practices.
@@ -659,18 +779,6 @@ The repository demonstrates clean native architecture, repeatable builds, measur
 
 ---
 
-# Milestone 16 — Stereo Capability Probe
-
-**Status:** Implemented and measured on Quest 3. Verdict:
-`PASS_WITH_DEBT`. Concurrent topology, capture, timestamp skew, and exposure
-passed; per-device calibration, optical synchronization validation, and
-Camera2-to-OpenXR time correlation remain explicit debt.
-
-The pixel-free report, measured values, and downstream design decision are
-recorded in `docs/stereo-capability.md`.
-
----
-
 # Recommended Execution Order
 
 1. Stabilize build and deployment.
@@ -683,12 +791,19 @@ recorded in `docs/stereo-capability.md`.
 8. Add hand tracking.
 9. Add anchors.
 10. Capture and preview Quest RGB.
-11. Validate RF-DETR offline on recorded Quest frames.
-12. Run frame-correlated RF-DETR live.
-13. Acquire and validate metric environment depth.
-14. Align RGB and depth spatially and temporally.
-15. Fuse detections and depth into world-space overlays.
-16. Profile, harden, document, and consolidate the project.
+11. Probe concurrent stereo capability (Milestone 16, completed with debt).
+12. Validate optical synchronization and the API-provided stereo calibration
+    (Camera2 intrinsics and lens-pose extrinsics), persisting the validated
+    model as the per-device artifact.
+13. If that gate passes, implement and validate same-pair stereo depth; if it
+    fails, retain honest bearing rays and move metric pose estimation off-device.
+14. Establish Camera2-to-OpenXR time and pose correlation for world placement.
+15. Run RF-DETR on one member of the exact retained stereo pair and isolate the
+    detected object before metric extent estimation.
+16. Retain Environment Depth for occlusion, raycasts, and independently useful
+    scene geometry (Milestone 12), not as assumed box depth.
+17. Rewrite and implement Milestones 13 and 14 against the validated branch.
+18. Profile, harden, document, and consolidate the project.
 
 ---
 
