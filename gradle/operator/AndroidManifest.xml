@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Merged into every allow-listed application only for the `operator` build type.
+
+  Meta XR Operator runs an MCP server inside the application process, so the
+  application needs network access; the experimental feature flag is required by
+  Horizon OS v205 and later. Neither entry reaches the debug, benchmark, or
+  release manifests, and CI asserts that.
+
+  Do not add a `package` attribute: it is a hard error under AGP 8.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-feature
+        android:name="com.oculus.experimental.enabled"
+        android:required="false" />
+</manifest>

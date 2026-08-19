@@ -66,14 +66,17 @@ jobs:
 
       - name: Check shell scripts
         run: |
-          shellcheck \
+          shellcheck -x \
             scripts/setup_quest_dev_env.sh \
             scripts/print_toolchain_config.sh \
             scripts/build_deploy.sh \
             scripts/capture_performance_bundle.sh \
+            scripts/xr_operator_session.sh \
             scripts/toolchain_config.sh \
-            tools/rfdetr_inference/prepare_onnxruntime.sh
-            tools/rfdetr_inference/prepare_onnxruntime_android.sh
+            tools/rfdetr_inference/prepare_onnxruntime.sh \
+            tools/rfdetr_inference/prepare_onnxruntime_android.sh \
+            tools/xr_operator/build_probe_layer.sh \
+            tools/xr_operator/prepare_xr_operator.sh
 
       - name: Install pinned Android toolchain
         run: |
@@ -203,6 +206,44 @@ jobs:
       - name: Build on-device RF-DETR detection
         run: ./scripts/build_deploy.sh --app 10-rfdetr-detection --build-only
 
+      - name: Build XR Operator packaging probe
+        run: |
+          ./tools/xr_operator/build_probe_layer.sh
+          ORG_GRADLE_PROJECT_questXrOperatorRoot=build/dependencies/questlab-probe-layer \
+            ./scripts/build_deploy.sh \
+              --app 01-openxr-bootstrap \
+              --variant operator \
+              --build-only
+
+      - name: Verify XR Operator APK isolation
+        run: |
+          apk=apps/01-openxr-bootstrap/build/outputs/apk/operator/01-openxr-bootstrap-operator.apk
+          manifest=apps/01-openxr-bootstrap/build/intermediates/packaged_manifests/operator/AndroidManifest.xml
+          listing="$RUNNER_TEMP/operator-apk-files.txt"
+          unzip -Z1 "$apk" > "$listing"
+          grep -Fxq 'lib/arm64-v8a/libopenxr_probe_layer.so' "$listing"
+          grep -Fxq \
+            'assets/openxr/1/api_layers/implicit.d/questlab_probe_layer.json' \
+            "$listing"
+          grep -q 'android:extractNativeLibs="true"' "$manifest"
+          grep -q 'android.permission.INTERNET' "$manifest"
+
+      - name: Verify XR Operator privacy allow-list
+        run: |
+          for app in 05-passthrough 09-quest-camera 10-rfdetr-detection; do
+            set +e
+            ./scripts/build_deploy.sh \
+              --app "$app" \
+              --variant operator \
+              --build-only
+            status=$?
+            set -e
+            if [[ "$status" -ne 2 ]]; then
+              echo "Expected Operator rejection for $app; got $status." >&2
+              exit 1
+            fi
+          done
+
       - name: Build legacy passthrough regression
         run: ./scripts/build_deploy.sh --app xrpassthrough --build-only
 
@@ -224,6 +265,29 @@ jobs:
                 --app "$app" \
                 --variant benchmark \
                 --build-only
+          done
+
+      - name: Verify INTERNET permission isolation
+        run: |
+          for variant in debug benchmark; do
+            for app in \
+              01-openxr-bootstrap \
+              02-vulkan-stereo-triangle \
+              03-head-pose \
+              04-controller-input \
+              05-passthrough \
+              06-spatial-object \
+              07-hand-tracking \
+              08-spatial-anchors \
+              09-quest-camera; do
+                manifest="apps/$app/build/intermediates/packaged_manifests/$variant/AndroidManifest.xml"
+                if grep -q 'android.permission.INTERNET' "$manifest"; then
+                  echo "Unexpected INTERNET permission: $manifest" >&2
+                  exit 1
+                fi
+            done
+            manifest="apps/10-rfdetr-detection/build/intermediates/packaged_manifests/$variant/AndroidManifest.xml"
+            grep -q 'android.permission.INTERNET' "$manifest"
           done
 
       - name: Upload debug APKs

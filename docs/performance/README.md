@@ -16,3 +16,8 @@ The local capture script writes under ignored `build/performance/` by default.
 Copy only reviewed, derived evidence here. `runtime_metrics` values left as
 `null` explicitly mean that an external Meta device tool was not correlated;
 they must not be interpreted as zero.
+
+Meta XR Operator is not a performance-capture path. Its variant is unavailable
+for apps 05–10 because their composited view can contain the physical room. If
+a synthetic app 01–04 capture is saved during development, keep it under
+ignored `build/operator/`; do not promote it into this evidence tree.

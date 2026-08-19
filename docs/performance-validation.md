@@ -62,6 +62,13 @@ for laboratory measurements:
 Do not compare a debug result with a benchmark result. Do not enable Vulkan
 validation during a precision run.
 
+An `operator` result is never performance evidence. That build is debuggable,
+requests INTERNET, extracts native libraries, and runs an in-process MCP server
+with observation and input-injection tooling. Use it to drive or assist an
+acceptance scenario, then repeat every timing measurement with the `benchmark`
+variant. `capture_performance_bundle.sh` rejects any package that does not end
+in `.benchmark`.
+
 ## App-local records
 
 Filter structured snapshots without enabling a per-frame log flood:

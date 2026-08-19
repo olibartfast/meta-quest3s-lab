@@ -190,6 +190,18 @@ jq -n \
         }
     }' > "$output_dir/run-manifest.json"
 
+# Performance evidence comes from the benchmark variant only. An operator
+# build is debuggable, carries INTERNET, and runs an MCP server and screen
+# capture inside the application process, so its frame timings are not
+# comparable with anything already in docs/performance/. Assert the package
+# actually under measurement, so that adding a variant flag to this script
+# cannot silently produce evidence from a different build.
+if [[ "$package" != *.benchmark ]]; then
+    echo "Performance bundles must measure a benchmark package." >&2
+    echo "Package under test: $package" >&2
+    exit 1
+fi
+
 "$script_dir/build_deploy.sh" \
     --app "$app" \
     --variant benchmark \

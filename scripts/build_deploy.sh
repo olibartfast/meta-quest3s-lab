@@ -98,7 +98,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: $0 --app {01-openxr-bootstrap|02-vulkan-stereo-triangle|03-head-pose|04-controller-input|05-passthrough|06-spatial-object|07-hand-tracking|08-spatial-anchors|09-quest-camera|10-rfdetr-detection|16-stereo-probe|xrpassthrough} [--variant {debug|benchmark}] [--build-only] [--vulkan-validation] [--perfetto-tracing] [--backend {ondevice|streaming|replay}] [--model PATH] [--manifest PATH] [--service-host HOST] [--service-port PORT] [--replay-detections PATH]" >&2
+            echo "Usage: $0 --app {01-openxr-bootstrap|02-vulkan-stereo-triangle|03-head-pose|04-controller-input|05-passthrough|06-spatial-object|07-hand-tracking|08-spatial-anchors|09-quest-camera|10-rfdetr-detection|16-stereo-probe|xrpassthrough} [--variant {debug|benchmark|operator}] [--build-only] [--vulkan-validation] [--perfetto-tracing] [--backend {ondevice|streaming|replay}] [--model PATH] [--manifest PATH] [--service-host HOST] [--service-port PORT] [--replay-detections PATH]" >&2
             exit 2
             ;;
     esac
@@ -106,7 +106,7 @@ done
 
 if [[ -z "$app" ]]; then
     echo "Select an application with --app." >&2
-    echo "Usage: $0 --app {01-openxr-bootstrap|02-vulkan-stereo-triangle|03-head-pose|04-controller-input|05-passthrough|06-spatial-object|07-hand-tracking|08-spatial-anchors|09-quest-camera|10-rfdetr-detection|16-stereo-probe|xrpassthrough} [--variant {debug|benchmark}] [--build-only] [--vulkan-validation] [--perfetto-tracing] [--backend {ondevice|streaming|replay}] [--model PATH] [--manifest PATH] [--service-host HOST] [--service-port PORT] [--replay-detections PATH]" >&2
+    echo "Usage: $0 --app {01-openxr-bootstrap|02-vulkan-stereo-triangle|03-head-pose|04-controller-input|05-passthrough|06-spatial-object|07-hand-tracking|08-spatial-anchors|09-quest-camera|10-rfdetr-detection|16-stereo-probe|xrpassthrough} [--variant {debug|benchmark|operator}] [--build-only] [--vulkan-validation] [--perfetto-tracing] [--backend {ondevice|streaming|replay}] [--model PATH] [--manifest PATH] [--service-host HOST] [--service-port PORT] [--replay-detections PATH]" >&2
     exit 2
 fi
 
@@ -117,12 +117,27 @@ case "$variant" in
     benchmark)
         gradle_variant="Benchmark"
         ;;
+    operator)
+        gradle_variant="Operator"
+        ;;
     *)
         echo "Unknown variant: $variant" >&2
-        echo "Available variants: debug, benchmark" >&2
+        echo "Available variants: debug, benchmark, operator" >&2
         exit 2
         ;;
 esac
+
+if [[ "$variant" == "operator" ]]; then
+    case "$app" in
+        01-openxr-bootstrap|02-vulkan-stereo-triangle|03-head-pose|04-controller-input)
+            ;;
+        *)
+            echo "--variant operator is available only for apps 01-04;" \
+                "$app is outside the strict privacy allow-list." >&2
+            exit 2
+            ;;
+    esac
+fi
 
 quest_export_toolchain
 "$script_dir/print_toolchain_config.sh" --strict
@@ -282,6 +297,11 @@ if [[ "$variant" == "benchmark" ]]; then
     application_id+=".benchmark"
 fi
 
+if [[ "$variant" == "operator" ]]; then
+    application_id+=".operator"
+    build_command+=("-PquestXrOperator=true")
+fi
+
 if [[ "$perfetto_tracing" == true ]]; then
     if [[ "$app" == "xrpassthrough" ]]; then
         echo "--perfetto-tracing is unavailable for the preserved legacy target." >&2
@@ -332,6 +352,13 @@ if [[ "$device_count" -ne 1 ]]; then
 fi
 
 adb install -r "$apk_path"
+
+if [[ "$variant" == "operator" ]]; then
+    # The experimental and capture-consent properties must be set before the
+    # application starts. This also creates the ADB forward consumed by the
+    # project-scoped MCP configuration.
+    "$script_dir/xr_operator_session.sh" --app "$app" --prepare-only
+fi
 
 if [[ "$app" == "16-stereo-probe" ]]; then
     adb shell pm grant "$application_id" android.permission.CAMERA
@@ -413,6 +440,10 @@ if [[ "$app" == "10-rfdetr-detection" ]]; then
 fi
 
 adb shell am start -n "$application_id/$activity"
+
+if [[ "$variant" == "operator" ]]; then
+    "$script_dir/xr_operator_session.sh" --app "$app" --verify-only
+fi
 
 if [[ "$app" == "16-stereo-probe" ]]; then
     probe_started=false
