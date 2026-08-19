@@ -1,9 +1,14 @@
 #include "xr_core/xr_session.h"
 
+#include "perf_telemetry/perf_telemetry.h"
+#include "perf_telemetry/trace_span.h"
 #include "xr_core/xr_error.h"
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <cstdio>
+#include <memory>
 #include <vector>
 
 namespace questlab {
@@ -44,6 +49,209 @@ const char* ReferenceSpaceName(XrReferenceSpaceType type) {
 
 }  // namespace
 
+class XrFrameTelemetry final {
+public:
+    static constexpr size_t kSampleCapacity = 256;
+
+    enum class Phase {
+        RuntimeFrameWait,
+        EventProcessing,
+        FrameUpdate,
+        RendererSubmission,
+        FrameEnd,
+    };
+
+    XrFrameTelemetry()
+        : reportCadence_(std::chrono::seconds(1)),
+          runStart_(perf::SteadyClock::now()),
+          windowStartMonotonicNanoseconds_(perf::SteadyNowNanoseconds()) {
+        std::snprintf(
+            runIdentifier_,
+            sizeof(runIdentifier_),
+            "xr-%lld",
+            static_cast<long long>(windowStartMonotonicNanoseconds_));
+    }
+
+    perf::DurationRing<kSampleCapacity>* DurationFor(Phase phase) {
+        switch (phase) {
+            case Phase::RuntimeFrameWait: return &runtimeFrameWait_;
+            case Phase::EventProcessing: return &eventProcessing_;
+            case Phase::FrameUpdate: return &frameUpdate_;
+            case Phase::RendererSubmission: return &rendererSubmission_;
+            case Phase::FrameEnd: return &frameEnd_;
+        }
+        return nullptr;
+    }
+
+    bool IsEnabled() const { return enabled_; }
+
+    void SetEnabled(bool enabled) {
+        if (enabled_ == enabled) {
+            return;
+        }
+        enabled_ = enabled;
+        ResetWindow(perf::SteadyClock::now(), true);
+    }
+
+    void RecordFrame(const XrFrameState& frameState) {
+        if (!enabled_) {
+            return;
+        }
+        ++frameCount_;
+        if (frameState.shouldRender == XR_TRUE) {
+            ++shouldRenderCount_;
+        }
+        lastPredictedDisplayTime_ = frameState.predictedDisplayTime;
+    }
+
+    void MaybeReport(XrSessionState state) {
+        if (!enabled_) {
+            return;
+        }
+        const auto now = perf::SteadyClock::now();
+        if (!reportCadence_.ShouldReport(now)) {
+            return;
+        }
+        const int64_t endNanoseconds =
+            std::chrono::duration_cast<perf::Nanoseconds>(
+                now.time_since_epoch()).count();
+        const bool warmup = now - runStart_ < std::chrono::seconds(5);
+        const auto wait = runtimeFrameWait_.Snapshot(
+            "xr_frame",
+            "runtime_frame_wait",
+            windowStartMonotonicNanoseconds_,
+            endNanoseconds,
+            warmup);
+        const auto events = eventProcessing_.Snapshot(
+            "xr_frame",
+            "event_processing",
+            windowStartMonotonicNanoseconds_,
+            endNanoseconds,
+            warmup);
+        const auto update = frameUpdate_.Snapshot(
+            "xr_frame",
+            "frame_update",
+            windowStartMonotonicNanoseconds_,
+            endNanoseconds,
+            warmup);
+        const auto render = rendererSubmission_.Snapshot(
+            "xr_frame",
+            "renderer_submission",
+            windowStartMonotonicNanoseconds_,
+            endNanoseconds,
+            warmup);
+        const auto end = frameEnd_.Snapshot(
+            "xr_frame",
+            "frame_end",
+            windowStartMonotonicNanoseconds_,
+            endNanoseconds,
+            warmup);
+        const auto& waitSummary = wait.Summary();
+        const auto& eventSummary = events.Summary();
+        const auto& updateSummary = update.Summary();
+        const auto& renderSummary = render.Summary();
+        const auto& endSummary = end.Summary();
+        LogInfo(
+            "PERF {\"schema\":\"questlab.performance.v1\","
+            "\"severity\":\"info\",\"category\":\"xr_frame\","
+            "\"metric_name\":\"frame_phases\","
+            "\"unit\":\"milliseconds\",\"run_id\":\"%s\","
+            "\"window_start_monotonic_ns\":%lld,"
+            "\"window_end_monotonic_ns\":%lld,\"warmup\":%s,"
+            "\"session_state\":\"%s\","
+            "\"last_predicted_display_time\":%lld,"
+            "\"counters\":{\"frames\":%llu,\"should_render\":%llu},"
+            "\"durations\":{"
+            "\"runtime_frame_wait\":[%llu,%.3f,%.3f,%.3f,%.3f,%.3f,%llu],"
+            "\"event_processing\":[%llu,%.3f,%.3f,%.3f,%.3f,%.3f,%llu],"
+            "\"frame_update\":[%llu,%.3f,%.3f,%.3f,%.3f,%.3f,%llu],"
+            "\"renderer_submission\":[%llu,%.3f,%.3f,%.3f,%.3f,%.3f,%llu],"
+            "\"frame_end\":[%llu,%.3f,%.3f,%.3f,%.3f,%.3f,%llu]},"
+            "\"duration_fields\":[\"count\",\"mean\",\"p50\","
+            "\"p95\",\"p99\",\"max\",\"overflow\"]}",
+            runIdentifier_,
+            static_cast<long long>(windowStartMonotonicNanoseconds_),
+            static_cast<long long>(endNanoseconds),
+            warmup ? "true" : "false",
+            SessionStateName(state),
+            static_cast<long long>(lastPredictedDisplayTime_),
+            static_cast<unsigned long long>(frameCount_),
+            static_cast<unsigned long long>(shouldRenderCount_),
+            static_cast<unsigned long long>(waitSummary.count),
+            waitSummary.meanMilliseconds,
+            waitSummary.p50Milliseconds,
+            waitSummary.p95Milliseconds,
+            waitSummary.p99Milliseconds,
+            waitSummary.maximumMilliseconds,
+            static_cast<unsigned long long>(waitSummary.overflowCount),
+            static_cast<unsigned long long>(eventSummary.count),
+            eventSummary.meanMilliseconds,
+            eventSummary.p50Milliseconds,
+            eventSummary.p95Milliseconds,
+            eventSummary.p99Milliseconds,
+            eventSummary.maximumMilliseconds,
+            static_cast<unsigned long long>(eventSummary.overflowCount),
+            static_cast<unsigned long long>(updateSummary.count),
+            updateSummary.meanMilliseconds,
+            updateSummary.p50Milliseconds,
+            updateSummary.p95Milliseconds,
+            updateSummary.p99Milliseconds,
+            updateSummary.maximumMilliseconds,
+            static_cast<unsigned long long>(updateSummary.overflowCount),
+            static_cast<unsigned long long>(renderSummary.count),
+            renderSummary.meanMilliseconds,
+            renderSummary.p50Milliseconds,
+            renderSummary.p95Milliseconds,
+            renderSummary.p99Milliseconds,
+            renderSummary.maximumMilliseconds,
+            static_cast<unsigned long long>(renderSummary.overflowCount),
+            static_cast<unsigned long long>(endSummary.count),
+            endSummary.meanMilliseconds,
+            endSummary.p50Milliseconds,
+            endSummary.p95Milliseconds,
+            endSummary.p99Milliseconds,
+            endSummary.maximumMilliseconds,
+            static_cast<unsigned long long>(endSummary.overflowCount));
+        ResetWindow(now, false);
+    }
+
+private:
+    void ResetWindow(
+        perf::SteadyClock::time_point now,
+        bool resetCadence) {
+        runtimeFrameWait_.Clear();
+        eventProcessing_.Clear();
+        frameUpdate_.Clear();
+        rendererSubmission_.Clear();
+        frameEnd_.Clear();
+        frameCount_ = 0;
+        shouldRenderCount_ = 0;
+        lastPredictedDisplayTime_ = 0;
+        windowStartMonotonicNanoseconds_ =
+            std::chrono::duration_cast<perf::Nanoseconds>(
+                now.time_since_epoch()).count();
+        if (resetCadence) {
+            reportCadence_.Reset();
+        }
+    }
+
+    perf::DurationRing<kSampleCapacity> runtimeFrameWait_;
+    perf::DurationRing<kSampleCapacity> eventProcessing_;
+    perf::DurationRing<kSampleCapacity> frameUpdate_;
+    perf::DurationRing<kSampleCapacity> rendererSubmission_;
+    perf::DurationRing<kSampleCapacity> frameEnd_;
+    perf::ReportCadence reportCadence_;
+    perf::SteadyClock::time_point runStart_;
+    int64_t windowStartMonotonicNanoseconds_ = 0;
+    XrTime lastPredictedDisplayTime_ = 0;
+    uint64_t frameCount_ = 0;
+    uint64_t shouldRenderCount_ = 0;
+    char runIdentifier_[32]{};
+    bool enabled_ = true;
+};
+
+XrSessionContext::XrSessionContext() = default;
+
 XrSessionContext::~XrSessionContext() {
     Shutdown();
 }
@@ -56,6 +264,10 @@ bool XrSessionContext::Initialize(
         return true;
     }
     instance_ = instance;
+    frameTelemetry_ = std::make_unique<XrFrameTelemetry>();
+    frameTelemetry_->SetEnabled(performanceTelemetryEnabled_);
+    layers_.clear();
+    layers_.reserve(2);
 
     uint32_t viewConfigurationCount = 0;
     if (!CheckXr(
@@ -276,6 +488,13 @@ bool XrSessionContext::CreateReferenceSpaces() {
 }
 
 bool XrSessionContext::PollEvents(XrEventObserver* observer) {
+    QUESTLAB_ATRACE_SCOPE("questlab.xr.event_processing");
+    perf::ScopedDuration<XrFrameTelemetry::kSampleCapacity> eventTimer(
+        frameTelemetry_ != nullptr
+            ? frameTelemetry_->DurationFor(
+                XrFrameTelemetry::Phase::EventProcessing)
+            : nullptr,
+        performanceTelemetryEnabled_);
     XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};
     while (true) {
         const XrResult result = xrPollEvent(instance_, &event);
@@ -409,12 +628,26 @@ bool XrSessionContext::PumpFrame(
 
     XrFrameWaitInfo waitInfo{XR_TYPE_FRAME_WAIT_INFO};
     XrFrameState frameState{XR_TYPE_FRAME_STATE};
+    XrResult waitResult = XR_SUCCESS;
+    {
+        QUESTLAB_ATRACE_SCOPE("questlab.xr.runtime_frame_wait");
+        perf::ScopedDuration<XrFrameTelemetry::kSampleCapacity> waitTimer(
+            frameTelemetry_ != nullptr
+                ? frameTelemetry_->DurationFor(
+                    XrFrameTelemetry::Phase::RuntimeFrameWait)
+                : nullptr,
+            performanceTelemetryEnabled_);
+        waitResult = xrWaitFrame(session_, &waitInfo, &frameState);
+    }
     if (!CheckXr(
             instance_,
-            xrWaitFrame(session_, &waitInfo, &frameState),
+            waitResult,
             "xrWaitFrame")) {
         shouldExit_ = true;
         return false;
+    }
+    if (frameTelemetry_ != nullptr) {
+        frameTelemetry_->RecordFrame(frameState);
     }
 
     XrFrameBeginInfo beginInfo{XR_TYPE_FRAME_BEGIN_INFO};
@@ -428,103 +661,134 @@ bool XrSessionContext::PumpFrame(
 
     bool frameSucceeded = true;
     const XrCompositionLayerBaseHeader* layer = nullptr;
-    if (updater != nullptr &&
-        !updater->UpdateFrame({
-            frameState.predictedDisplayTime,
-            localSpace_,
-        })) {
-        LogError("Frame updater failed; submitting an empty frame");
-        frameSucceeded = false;
+    {
+        QUESTLAB_ATRACE_SCOPE("questlab.xr.frame_update");
+        perf::ScopedDuration<XrFrameTelemetry::kSampleCapacity> updateTimer(
+            frameTelemetry_ != nullptr
+                ? frameTelemetry_->DurationFor(
+                    XrFrameTelemetry::Phase::FrameUpdate)
+                : nullptr,
+            performanceTelemetryEnabled_);
+        if (updater != nullptr &&
+            !updater->UpdateFrame({
+                frameState.predictedDisplayTime,
+                localSpace_,
+            })) {
+            LogError("Frame updater failed; submitting an empty frame");
+            frameSucceeded = false;
+        }
     }
-    if (frameSucceeded &&
-        frameState.shouldRender == XR_TRUE &&
-        renderer != nullptr) {
-        XrViewLocateInfo locateInfo{XR_TYPE_VIEW_LOCATE_INFO};
-        locateInfo.viewConfigurationType = viewConfiguration_;
-        locateInfo.displayTime = frameState.predictedDisplayTime;
-        locateInfo.space = localSpace_;
-        XrViewState viewState{XR_TYPE_VIEW_STATE};
-        uint32_t viewCount = 0;
-        if (!CheckXr(
-                instance_,
-                xrLocateViews(
-                    session_,
-                    &locateInfo,
-                    &viewState,
-                    static_cast<uint32_t>(views_.size()),
-                    &viewCount,
-                    views_.data()),
-                "xrLocateViews")) {
-            frameSucceeded = false;
-        } else if (viewCount != views_.size()) {
-            LogError(
-                "xrLocateViews returned %u views; expected %zu",
-                viewCount,
-                views_.size());
-            frameSucceeded = false;
-        } else {
-            constexpr XrViewStateFlags kRequiredViewFlags =
-                XR_VIEW_STATE_POSITION_VALID_BIT |
-                XR_VIEW_STATE_ORIENTATION_VALID_BIT;
-            if ((viewState.viewStateFlags & kRequiredViewFlags) !=
-                kRequiredViewFlags) {
-                if (!invalidViewsLogged_) {
-                    LogWarning(
-                        "Stereo view poses are not valid; submitting an empty frame");
-                    invalidViewsLogged_ = true;
-                }
+    {
+        QUESTLAB_ATRACE_SCOPE("questlab.xr.renderer_submission");
+        perf::ScopedDuration<XrFrameTelemetry::kSampleCapacity> renderTimer(
+            frameTelemetry_ != nullptr
+                ? frameTelemetry_->DurationFor(
+                    XrFrameTelemetry::Phase::RendererSubmission)
+                : nullptr,
+            performanceTelemetryEnabled_);
+        if (frameSucceeded &&
+            frameState.shouldRender == XR_TRUE &&
+            renderer != nullptr) {
+            XrViewLocateInfo locateInfo{XR_TYPE_VIEW_LOCATE_INFO};
+            locateInfo.viewConfigurationType = viewConfiguration_;
+            locateInfo.displayTime = frameState.predictedDisplayTime;
+            locateInfo.space = localSpace_;
+            XrViewState viewState{XR_TYPE_VIEW_STATE};
+            uint32_t viewCount = 0;
+            if (!CheckXr(
+                    instance_,
+                    xrLocateViews(
+                        session_,
+                        &locateInfo,
+                        &viewState,
+                        static_cast<uint32_t>(views_.size()),
+                        &viewCount,
+                        views_.data()),
+                    "xrLocateViews")) {
+                frameSucceeded = false;
+            } else if (viewCount != views_.size()) {
+                LogError(
+                    "xrLocateViews returned %u views; expected %zu",
+                    viewCount,
+                    views_.size());
+                frameSucceeded = false;
             } else {
-                invalidViewsLogged_ = false;
-                XrFrameRenderInfo renderInfo;
-                renderInfo.predictedDisplayTime = frameState.predictedDisplayTime;
-                renderInfo.space = localSpace_;
-                renderInfo.views = views_.data();
-                renderInfo.viewCount = viewCount;
-                renderInfo.viewStateFlags = viewState.viewStateFlags;
-                if (!LocateTrackedSpaces(
-                        frameState.predictedDisplayTime,
-                        &renderInfo)) {
-                    frameSucceeded = false;
-                } else if (!renderer->RenderFrame(renderInfo, &layer)) {
-                    LogError("Frame renderer failed; submitting an empty frame");
-                    layer = nullptr;
-                    frameSucceeded = false;
+                constexpr XrViewStateFlags kRequiredViewFlags =
+                    XR_VIEW_STATE_POSITION_VALID_BIT |
+                    XR_VIEW_STATE_ORIENTATION_VALID_BIT;
+                if ((viewState.viewStateFlags & kRequiredViewFlags) !=
+                    kRequiredViewFlags) {
+                    if (!invalidViewsLogged_) {
+                        LogWarning(
+                            "Stereo view poses are not valid; submitting an empty frame");
+                        invalidViewsLogged_ = true;
+                    }
+                } else {
+                    invalidViewsLogged_ = false;
+                    XrFrameRenderInfo renderInfo;
+                    renderInfo.predictedDisplayTime = frameState.predictedDisplayTime;
+                    renderInfo.space = localSpace_;
+                    renderInfo.views = views_.data();
+                    renderInfo.viewCount = viewCount;
+                    renderInfo.viewStateFlags = viewState.viewStateFlags;
+                    if (!LocateTrackedSpaces(
+                            frameState.predictedDisplayTime,
+                            &renderInfo)) {
+                        frameSucceeded = false;
+                    } else if (!renderer->RenderFrame(renderInfo, &layer)) {
+                        LogError("Frame renderer failed; submitting an empty frame");
+                        layer = nullptr;
+                        frameSucceeded = false;
+                    }
                 }
             }
         }
-    }
 
-    std::vector<const XrCompositionLayerBaseHeader*> layers;
-    layers.reserve(2);
-    if (frameSucceeded &&
-        frameState.shouldRender == XR_TRUE &&
-        underlayProvider != nullptr &&
-        !underlayProvider->AppendUnderlayLayers(
-            frameState.predictedDisplayTime,
-            &layers)) {
-        LogError("Underlay provider failed; submitting an empty frame");
-        frameSucceeded = false;
-        layers.clear();
-    }
-    if (frameSucceeded && layer != nullptr) {
-        layers.push_back(layer);
+        layers_.clear();
+        if (frameSucceeded &&
+            frameState.shouldRender == XR_TRUE &&
+            underlayProvider != nullptr &&
+            !underlayProvider->AppendUnderlayLayers(
+                frameState.predictedDisplayTime,
+                &layers_)) {
+            LogError("Underlay provider failed; submitting an empty frame");
+            frameSucceeded = false;
+            layers_.clear();
+        }
+        if (frameSucceeded && layer != nullptr) {
+            layers_.push_back(layer);
+        }
     }
 
     XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
     endInfo.displayTime = frameState.predictedDisplayTime;
     endInfo.environmentBlendMode = blendMode_;
-    endInfo.layerCount = static_cast<uint32_t>(layers.size());
-    endInfo.layers = layers.empty() ? nullptr : layers.data();
+    endInfo.layerCount = static_cast<uint32_t>(layers_.size());
+    endInfo.layers = layers_.empty() ? nullptr : layers_.data();
+    XrResult endResult = XR_SUCCESS;
+    {
+        QUESTLAB_ATRACE_SCOPE("questlab.xr.frame_end");
+        perf::ScopedDuration<XrFrameTelemetry::kSampleCapacity> endTimer(
+            frameTelemetry_ != nullptr
+                ? frameTelemetry_->DurationFor(
+                    XrFrameTelemetry::Phase::FrameEnd)
+                : nullptr,
+            performanceTelemetryEnabled_);
+        endResult = xrEndFrame(session_, &endInfo);
+    }
     const bool endSucceeded = CheckXr(
             instance_,
-            xrEndFrame(session_, &endInfo),
-            layers.empty()
+            endResult,
+            layers_.empty()
                 ? "xrEndFrame(empty)"
-                : layers.size() == 1
+                : layers_.size() == 1
                     ? layer == nullptr
                         ? "xrEndFrame(underlay)"
                         : "xrEndFrame(projection)"
                     : "xrEndFrame(underlay+projection)");
+    if (frameTelemetry_ != nullptr) {
+        frameTelemetry_->MaybeReport(state_);
+    }
     if (!endSucceeded || !frameSucceeded) {
         shouldExit_ = true;
         return false;
@@ -534,6 +798,13 @@ bool XrSessionContext::PumpFrame(
 
 bool XrSessionContext::PumpEmptyFrame() {
     return PumpFrame(nullptr, nullptr);
+}
+
+void XrSessionContext::SetPerformanceTelemetryEnabled(bool enabled) {
+    performanceTelemetryEnabled_ = enabled;
+    if (frameTelemetry_ != nullptr) {
+        frameTelemetry_->SetEnabled(enabled);
+    }
 }
 
 void XrSessionContext::RequestExit() {
@@ -569,6 +840,8 @@ void XrSessionContext::Shutdown() {
     state_ = XR_SESSION_STATE_UNKNOWN;
     viewConfigurationViews_.clear();
     views_.clear();
+    layers_.clear();
+    frameTelemetry_.reset();
     invalidViewsLogged_ = false;
     stageBounds_ = {};
     stageBoundsAvailable_ = false;

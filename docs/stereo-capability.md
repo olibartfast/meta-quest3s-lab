@@ -8,9 +8,13 @@ and exposure behaviour is strong enough to justify a bounded stereo
 calibration milestone. It is not yet sufficient to claim a production
 stereo-depth source.
 
-The non-surrogable platform gates passed. The remaining work is calibration
-that can be produced per device, plus an optical sanity test needed because the
-runtime does not advertise a calibrated logical-camera sync relationship.
+The non-surrogable platform gates passed. The calibration model itself is
+sourced from the Meta Passthrough Camera API (Camera2
+`LENS_INTRINSIC_CALIBRATION` intrinsics and `LENS_POSE_ROTATION`/
+`LENS_POSE_TRANSLATION` extrinsics); no manual target calibration is planned.
+The remaining work is target-free software validation of that API-provided
+model, plus an optical sanity test needed because the runtime does not
+advertise a calibrated logical-camera sync relationship.
 
 ## Measured run
 
@@ -79,21 +83,31 @@ Before implementing stereo disparity, complete one bounded follow-up gate:
 1. Validate physical exposure synchronization with a shared irregular optical
    stimulus. Compute and retain only per-frame luminance/correlation statistics;
    do not save scene pixels.
-2. Calibrate intrinsics, distortion, stereo rotation, and translation for this
-   individual headset and exact stream size/ROI using a ChArUco or checkerboard
-   target. Persist a versioned, checksummed calibration artifact keyed to the
-   device and stream configuration.
-3. Verify physical baseline, reprojection error, rectified vertical disparity,
-   and metric scale against explicit tolerances before producing depth.
+2. Source intrinsics and stereo rotation/translation from the Meta Passthrough
+   Camera API (Camera2 `LENS_INTRINSIC_CALIBRATION`, `LENS_POSE_ROTATION`,
+   `LENS_POSE_TRANSLATION`) instead of a manual target calibration. Meta
+   publishes no distortion coefficients and does not document whether the
+   stream is pre-undistorted, so treat the zero-distortion pinhole model as a
+   hypothesis carried into step 3, not as a fact. Persist the API-provided
+   model as a versioned, checksummed calibration artifact keyed to the device
+   and stream configuration.
+3. Verify the API-provided model without a printed target: straight-line
+   residuals on natural scene edges for the zero-distortion hypothesis, plus
+   physical baseline, reprojection error, rectified vertical disparity from
+   natural-scene feature correspondences, and metric scale against explicit
+   tolerances before producing depth. A tolerance failure here reopens the
+   distortion question and blocks stereo depth; it does not silently fall back
+   to an approximation.
 4. Invalidate or revalidate the artifact after firmware, stream crop/ROI,
    distortion-correction, or mechanical geometry changes.
 5. Establish the Camera2-to-OpenXR time mapping before transforming a stereo
    result into world space.
 
-This calibration is not a universal Quest constant. It is per-device and valid
-only while the rig and image mapping remain stable. Dynamic correction or ROI
-changes can make a static calibration drift even when the housing appears
-rigid.
+The API-provided calibration is not a universal Quest constant. It is
+per-device and valid only while the rig and image mapping remain stable.
+Dynamic correction or ROI changes can invalidate the persisted artifact even
+when the housing appears rigid, which is why the validation gate re-runs after
+firmware or stream-configuration changes.
 
 ## Reproduce
 

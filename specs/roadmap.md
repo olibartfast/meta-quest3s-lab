@@ -60,8 +60,8 @@ object-pose work may start before it passes.
   `libs/artifact_integrity`
 - Record an explicit gate verdict:
   - **Pass** → Phase 3 proceeds
-  - **Fail** → drop same-pair stereo depth, keep honest bearing rays, move metric pose
-    estimation off-device, and rewrite Phases 3–5 accordingly
+  - **Fail** → drop same-pair stereo depth, fall back to the environment-depth fusion
+    app 10 already uses, and rewrite Phases 3–5 accordingly
 
 ## Phase 3 — Same-Pair Stereo Depth
 
@@ -89,9 +89,11 @@ Milestone 13, rewritten. Required for either stereo or environment-depth geometr
 
 ## Phase 5 — Metric 3D Overlay
 
-Milestone 14. The first phase permitted to render a 3D box.
+Milestone 14. **The mechanism already exists** — `libs/detection_fusion` and app 10
+render depth-fused metric boxes today. This phase measures whether they are right.
 
-- Create `apps/14-cv-spatial-overlay`
+- Decide whether the measurements run against app 10 or a separate
+  `apps/14-cv-spatial-overlay`; do not rebuild what app 10 already does
 - Retrieve the retained RGB/range record for each RF-DETR frame ID
 - Isolate the object inside each detection; box-only depth sampling is not the production
   design
@@ -119,12 +121,13 @@ Milestone 11, rescoped. Extends `apps/10-rfdetr-detection`; no new application.
 
 ## Phase 7 — Environment Depth
 
-Milestone 12, retained for occlusion, raycasts, and coarse scene geometry — not as assumed
-object depth for detection boxes.
+Milestone 12, retained for occlusion, raycasts, and coarse scene geometry. **The adapter
+already exists** in `libs/depth_source` and app 10 starts and consumes it; what is missing
+is this phase's evidence.
 
-- Create `apps/12-environment-depth`
-- Request spatial-data permission and capability-check `XR_META_environment_depth`
-- Implement the Meta adapter behind the existing `libs/depth_source` interface
+- Create `apps/12-environment-depth` as the standalone diagnostic
+- Confirm the spatial-data permission and `XR_META_environment_depth` capability check
+  behave correctly when support is absent
 - Acquire one depth image at the valid point in each OpenXR frame; preserve near/far, FOV,
   pose, dimensions, and display time
 - Convert depth texture values to metric distance; reject the unreliable near field

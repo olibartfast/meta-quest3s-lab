@@ -17,24 +17,33 @@ MetaCamera2Adapter -> LatestFrameQueue -> stride-aware YUV conversion
 
 `IRgbCameraSource` is the portable boundary. Its captures contain frame and
 sensor timestamps, dimensions, pixel format, owned planes with row and pixel
-strides, intrinsics, and camera-to-head pose. It contains no Camera2, JNI,
+strides, intrinsics, and Camera2 calibration extrinsics. The reported rotation
+maps Android sensor/head axes into camera optical axes, while the reported
+translation is the optical-center position in sensor/head axes; together they
+must not be treated as an ordinary rigid pose. The interface contains no Camera2, JNI,
 OpenXR, or Vulkan handles.
 
 `LatestFrameQueue` has capacity one by design. Publishing while a frame is
 pending replaces the old frame and increments the overwrite counter. Camera
 callbacks therefore never wait for the OpenXR render loop.
 
-The replay adapter consumes the same contract. Its version-one manifest is a
+The replay adapter consumes the same contract. Its version-two manifest is a
 whitespace-delimited record:
 
 ```text
-QUEST_CAMERA_FIXTURE_V1 width height yRow yPixel uRow uPixel vRow vPixel y.bin u.bin v.bin
+QUEST_CAMERA_FIXTURE_V2 width height yRow yPixel uRow uPixel vRow vPixel y.bin u.bin v.bin
+pixel_sha256 <lowercase SHA-256>
 ```
 
-Plane paths are relative to the manifest. Optional version-one metadata lines
+Plane paths must be plain relative filenames. The checksum covers a canonical
+header containing the dimensions and six strides plus the lengths and exact
+owned bytes of the Y, U, and V planes. Including padding bytes makes the
+fixture immutable byte-for-byte without introducing a second colour
+converter. Optional version-two metadata lines
 store the sensor timestamp, five intrinsic values, five distortion values,
-and camera-to-head quaternion and translation. The format is intentionally
-small and versioned; unknown versions fail closed.
+and Camera2 pose-rotation and pose-translation values. The format is intentionally
+small and versioned; missing checksums, malformed geometry, path traversal,
+unknown metadata, `V1`, and unknown future versions fail closed.
 
 ## Platform selection
 
@@ -52,7 +61,7 @@ The implementation follows Meta's current passthrough-camera guidance:
 
 Sources:
 
-- [Meta Android Native Camera2 API](https://developers.meta.com/horizon/documentation/native/android/pca-native-documentation/)
+- [Meta Android Native Camera2 API](https://developers.meta.com/horizon/llmstxt/documentation/native/android/pca-native-documentation.md)
 - [Android Camera2 API](https://developer.android.com/media/camera/camera2)
 - [Android runtime permissions](https://developer.android.com/training/permissions/requesting)
 
@@ -97,6 +106,10 @@ Before adding a fixture:
    directory.
 7. Run the replay adapter and compare its RGBA output byte-for-byte with the
    live conversion output.
+
+Milestone 10's reference generator performs an additional independent Python
+decode and compares it byte-for-byte with the C++
+`ConvertYuv420ToRgba` output before allowing pixels to reach RF-DETR.
 
 ## Validation checklist
 

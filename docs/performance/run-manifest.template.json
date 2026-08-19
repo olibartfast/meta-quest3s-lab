@@ -1,0 +1,43 @@
+{
+  "schema": "questlab.performance.run.v1",
+  "captured_at_utc": "YYYYMMDDTHHMMSSZ",
+  "git_sha": "FULL_GIT_SHA",
+  "app": "02-vulkan-stereo-triangle",
+  "package": "com.olibartfast.questlab.vulkanstereotriangle.benchmark",
+  "build_type": "benchmark",
+  "instrumentation": {
+    "bounded_telemetry": true,
+    "atrace": false
+  },
+  "device": {
+    "serial": "REDACT_IF_PUBLISHED",
+    "model": "Quest 3 or Quest 3S",
+    "horizon_os": "VERSION"
+  },
+  "refresh_rate_hz": 72,
+  "power_state": "battery",
+  "tether_state": "wireless-adb",
+  "scenario_id": "steady-state",
+  "requested_duration_seconds": 900,
+  "render_configuration": {
+    "render_scale": null,
+    "foveation": null,
+    "validation_layers": false
+  },
+  "conditions": {
+    "room": "CONTROLLED_DESCRIPTION",
+    "headset_state": "cool or warmed",
+    "external_tools": []
+  },
+  "budgets": {
+    "stale_frames_max": null,
+    "cpu_phase_p99_milliseconds": null,
+    "queue_high_water_max": null,
+    "native_memory_high_water_megabytes": null
+  },
+  "privacy": {
+    "media_collected": false,
+    "camera_or_depth_payload_collected": false,
+    "review_status": "not-required-no-media"
+  }
+}

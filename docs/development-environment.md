@@ -1,12 +1,11 @@
 # Development Environment
 
-## Current Application
+## Current Applications
 
-The repository contains three independently selectable Android applications.
-`XrPassthrough` is the preserved Meta/OpenGL ES baseline,
-`apps/01-openxr-bootstrap` is the empty-frame Milestone 1 lifecycle
-application, and `apps/02-vulkan-stereo-triangle` renders the Milestone 2
-stereo scene.
+The repository contains eleven independently selectable repository-owned
+Android applications under `apps/`, covering the native OpenXR lifecycle,
+Quest Camera2 capture, RF-DETR detection, and the stereo capability probe.
+`XrPassthrough` remains the preserved Meta/OpenGL ES baseline.
 
 ## Inspect the Toolchain
 
@@ -29,6 +28,7 @@ Use the repository-owned wrapper command:
 ```bash
 ./scripts/build_deploy.sh --app 01-openxr-bootstrap --build-only
 ./scripts/build_deploy.sh --app 02-vulkan-stereo-triangle --build-only
+./scripts/build_deploy.sh --app 09-quest-camera --build-only
 ./scripts/build_deploy.sh --app xrpassthrough --build-only
 ```
 
@@ -37,8 +37,72 @@ Application selection is explicit so the legacy baseline remains available. The 
 ```text
 apps/01-openxr-bootstrap/build/outputs/apk/debug/01-openxr-bootstrap-debug.apk
 apps/02-vulkan-stereo-triangle/build/outputs/apk/debug/02-vulkan-stereo-triangle-debug.apk
+apps/09-quest-camera/build/outputs/apk/debug/09-quest-camera-debug.apk
 XrPassthrough/Projects/Android/build/outputs/apk/debug/XrPassthrough-debug.apk
 ```
+
+For measurements, use the optimized `benchmark` variant. It uses the release
+native configuration, is non-debuggable, and is signed with the local debug
+key only to permit laboratory installation:
+
+```bash
+./scripts/build_deploy.sh \
+  --app 09-quest-camera \
+  --variant benchmark \
+  --build-only
+```
+
+Add `--perfetto-tracing` when a short ATRACE/Perfetto scheduling capture is
+required. Leave it off for the matching disabled-instrumentation comparison.
+
+### Experimental XR Operator build
+
+The opt-in `operator` variant packages the experimental Meta XR Operator
+OpenXR API layer into synthetic apps 01–04 only. It is debuggable, has an
+`.operator` application-id suffix, and requests INTERNET so its in-process MCP
+server can be reached over an ADB forward. Apps 05–10 are excluded because
+they render passthrough or hold camera permissions; app 16 and the preserved
+legacy target are also unavailable.
+
+Download Meta XR Operator Standalone 205.1 through a Meta developer account.
+Before first use, record its license, archive SHA-256, Android file tree, layer
+manifest name, `library_path`, and `api_version` in
+`specs/2026-08-19-xr-operator-adoption/requirements.md`. Then pin the reviewed
+SHA-256 in `tools/xr_operator/prepare_xr_operator.sh` and stage the archive:
+
+```bash
+./tools/xr_operator/prepare_xr_operator.sh \
+  --archive /path/to/meta-xr-operator-standalone.zip
+```
+
+Build-only validation does not contact a headset:
+
+```bash
+./scripts/build_deploy.sh \
+  --app 01-openxr-bootstrap \
+  --variant operator \
+  --build-only
+```
+
+Without `--build-only`, deployment prepares the device properties and ADB
+forward before launch, then verifies that the server is listening on device
+port 8720 and is bound only to loopback. The project `.mcp.json` connects
+directly to `http://localhost:8720/sse`; Meta recommends its proxy when
+automatic reconnect and an offline tool list are required.
+
+```bash
+./scripts/build_deploy.sh \
+  --app 01-openxr-bootstrap \
+  --variant operator
+./scripts/xr_operator_session.sh --stop
+```
+
+Meta documents Operator captures as compositing physical-environment and
+virtual content, and does not document a switch that removes the capture tool.
+The build and session scripts therefore reject apps 05–10 entirely. They do not
+receive the layer, server, Operator manifest, or its added INTERNET permission.
+This allow-list is the enforceable privacy boundary; controller injection and
+state inspection through Operator are intentionally unavailable for those apps.
 
 ## Connect and Deploy
 

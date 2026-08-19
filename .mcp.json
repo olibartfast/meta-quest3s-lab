@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "meta-xr-operator": {
+      "type": "sse",
+      "url": "http://localhost:8720/sse"
+    }
+  }
+}

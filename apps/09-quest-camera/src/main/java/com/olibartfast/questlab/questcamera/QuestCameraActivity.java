@@ -24,8 +24,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Locale;
 
 public final class QuestCameraActivity extends NativeActivity {
     private static final String TAG = "QuestCamera";
@@ -40,7 +44,7 @@ public final class QuestCameraActivity extends NativeActivity {
         // permission results can reach this subclass through the Java class
         // loader before Horizon OS associates its native methods. Load it
         // explicitly so every JNI callback resolves deterministically.
-        System.loadLibrary("quest_camera");
+        System.loadLibrary(BuildConfig.NATIVE_LIBRARY_NAME);
     }
 
     private static final CameraCharacteristics.Key<Integer> CAMERA_SOURCE =
@@ -443,6 +447,8 @@ public final class QuestCameraActivity extends NativeActivity {
         }
         try {
             long byteCount = 0;
+            String pixelSha256 = computeFixturePixelSha256(
+                image, planes, bytes);
             String[] names = {"y.bin", "u.bin", "v.bin"};
             for (int index = 0; index < names.length; ++index) {
                 writeAtomically(new File(directory, names[index]), bytes[index]);
@@ -452,7 +458,7 @@ public final class QuestCameraActivity extends NativeActivity {
             File temporary = new File(directory, "manifest.qcam.tmp");
             try (PrintWriter writer = new PrintWriter(temporary)) {
                 writer.printf(
-                    "QUEST_CAMERA_FIXTURE_V1 %d %d %d %d %d %d %d %d " +
+                    "QUEST_CAMERA_FIXTURE_V2 %d %d %d %d %d %d %d %d " +
                     "y.bin u.bin v.bin%n",
                     image.getWidth(),
                     image.getHeight(),
@@ -462,6 +468,7 @@ public final class QuestCameraActivity extends NativeActivity {
                     planes[1].getPixelStride(),
                     planes[2].getRowStride(),
                     planes[2].getPixelStride());
+                writer.printf("pixel_sha256 %s%n", pixelSha256);
                 writer.printf(
                     "sensor_timestamp_ns %d%n", image.getTimestamp());
                 if (activeSelection != null &&
@@ -508,6 +515,51 @@ public final class QuestCameraActivity extends NativeActivity {
             nativeOnCameraError(
                 "Private capture failed: " + exception.getMessage());
         }
+    }
+
+    private static String computeFixturePixelSha256(
+        Image image,
+        Image.Plane[] planes,
+        byte[][] bytes) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            updateDigestText(digest, "QUEST_CAMERA_PIXEL_SHA256_V2\n");
+            updateDigestText(
+                digest,
+                String.format(
+                    Locale.ROOT,
+                    "%d %d %d %d %d %d %d %d%n",
+                    image.getWidth(),
+                    image.getHeight(),
+                    planes[0].getRowStride(),
+                    planes[0].getPixelStride(),
+                    planes[1].getRowStride(),
+                    planes[1].getPixelStride(),
+                    planes[2].getRowStride(),
+                    planes[2].getPixelStride()));
+            for (byte[] planeBytes : bytes) {
+                updateDigestText(
+                    digest,
+                    Integer.toString(planeBytes.length) + "\n");
+                digest.update(planeBytes);
+                updateDigestText(digest, "\n");
+            }
+            StringBuilder result = new StringBuilder(64);
+            for (byte value : digest.digest()) {
+                result.append(String.format(
+                    Locale.ROOT, "%02x", value & 0xff));
+            }
+            return result.toString();
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(
+                "Android runtime has no SHA-256 provider", exception);
+        }
+    }
+
+    private static void updateDigestText(
+        MessageDigest digest,
+        String value) {
+        digest.update(value.getBytes(StandardCharsets.UTF_8));
     }
 
     private static void writeAtomically(File target, byte[] bytes)

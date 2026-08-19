@@ -1,3 +1,129 @@
 plugins {
     id "com.android.application" version "8.2.0" apply false
 }
+
+// Applications that may be built with the Meta XR Operator API layer. This is
+// an allow-list rather than an exclusion list on purpose: the `operator` build
+// type grants INTERNET and ships an in-process MCP server that can capture the
+// rendered view and inject input, so a new application must opt in explicitly
+// instead of inheriting it by being added to settings.gradle. Apps 05 through
+// 10 are deliberately absent because they render passthrough or hold camera
+// permissions, and Meta exposes no documented switch that removes capture.
+//
+// apps/16-stereo-probe is absent because it is a plain Android application with
+// no OpenXR instance, so an OpenXR API layer would never load. XrPassthrough is
+// a separate Gradle build and is not a subproject here.
+def questXrOperatorApps = [
+    ":apps:01-openxr-bootstrap",
+    ":apps:02-vulkan-stereo-triangle",
+    ":apps:03-head-pose",
+    ":apps:04-controller-input",
+]
+
+// Must match the directory produced by tools/xr_operator/prepare_xr_operator.sh.
+def questXrOperatorVersion = "205.1"
+
+subprojects { subproject ->
+    subproject.plugins.withId("com.android.application") {
+        def tracingEnabled = subproject.providers
+            .gradleProperty("questPerfettoTracing")
+            .orElse("false")
+            .get()
+            .toBoolean()
+        def androidExtension = subproject.extensions.getByName("android")
+        // Appended, never assigned: assigning would discard arguments that the
+        // subproject's own externalNativeBuild block contributes.
+        androidExtension.defaultConfig.externalNativeBuild.cmake.arguments.add(
+            "-DQUEST_ENABLE_PERFETTO_TRACING=" +
+                (tracingEnabled ? "ON" : "OFF")
+        )
+
+        def benchmarkBuild =
+            androidExtension.buildTypes.maybeCreate("benchmark")
+        benchmarkBuild.initWith(
+            androidExtension.buildTypes.getByName("release")
+        )
+        benchmarkBuild.debuggable = false
+        benchmarkBuild.minifyEnabled = false
+        benchmarkBuild.signingConfig =
+            androidExtension.signingConfigs.getByName("debug")
+        benchmarkBuild.applicationIdSuffix = ".benchmark"
+        benchmarkBuild.versionNameSuffix = "-benchmark"
+        benchmarkBuild.matchingFallbacks = ["release"]
+
+        def operatorEnabled = subproject.providers
+            .gradleProperty("questXrOperator")
+            .orElse("false")
+            .get()
+            .toBoolean()
+        if (questXrOperatorApps.contains(subproject.path) &&
+            operatorEnabled) {
+            def operatorBuild =
+                androidExtension.buildTypes.maybeCreate("operator")
+            operatorBuild.initWith(
+                androidExtension.buildTypes.getByName("debug")
+            )
+            // This closure runs when the Android plugin is applied, which is
+            // before the subproject's own buildTypes block is evaluated, so
+            // initWith copies an unconfigured debug. Set every field that
+            // matters explicitly. A non-debuggable operator build silently
+            // breaks run-as and looks like the API layer failed to load.
+            operatorBuild.debuggable = true
+            operatorBuild.minifyEnabled = false
+            operatorBuild.signingConfig =
+                androidExtension.signingConfigs.getByName("debug")
+            operatorBuild.applicationIdSuffix = ".operator"
+            operatorBuild.versionNameSuffix = "-operator"
+            operatorBuild.matchingFallbacks = ["debug"]
+            // The OpenXR loader resolves an API layer's relative library_path
+            // against ApplicationInfo.nativeLibraryDir and then stats it. With
+            // the default extractNativeLibs=false the layer stays compressed
+            // inside the APK, that stat fails, and the layer is skipped without
+            // an error. AGP 8.2 has no packaging block on BuildType, so this
+            // goes through the variant API, scoped to the operator variant so
+            // debug and benchmark APK size and install time are unchanged.
+            def androidComponents =
+                subproject.extensions.getByName("androidComponents")
+            androidComponents.onVariants(
+                androidComponents.selector().withBuildType("operator")
+            ) { variant ->
+                variant.packaging.jniLibs.useLegacyPackaging.set(true)
+            }
+
+            def operatorSources =
+                androidExtension.sourceSets.maybeCreate("operator")
+            operatorSources.manifest.srcFile(
+                subproject.rootProject.file(
+                    "gradle/operator/AndroidManifest.xml"
+                )
+            )
+
+            // questXrOperatorRoot lets the packaging probe in
+            // tools/xr_operator drive exactly this path without the Meta
+            // bundle present. Both bundles use the same layout.
+            def operatorRootPath = subproject.providers
+                .gradleProperty("questXrOperatorRoot")
+                .orElse(
+                    "build/dependencies/meta-xr-operator-" +
+                        questXrOperatorVersion
+                )
+                .get()
+            def operatorRoot = subproject.rootProject.file(operatorRootPath)
+            if (!operatorRoot.isDirectory()) {
+                throw new GradleException(
+                    "questXrOperator=true but " + operatorRoot +
+                        " is missing. Run " +
+                        "tools/xr_operator/prepare_xr_operator.sh first."
+                )
+            }
+            // srcDir appends; assigning srcDirs would discard the implicit
+            // src/operator defaults.
+            operatorSources.jniLibs.srcDir(
+                new File(operatorRoot, "jni").absolutePath
+            )
+            operatorSources.assets.srcDir(
+                new File(operatorRoot, "assets").absolutePath
+            )
+        }
+    }
+}

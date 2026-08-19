@@ -1,0 +1,10 @@
+{
+    "file_format_version": "1.0.0",
+    "api_layer": {
+        "name": "XR_APILAYER_QUESTLAB_probe",
+        "library_path": "libopenxr_probe_layer.so",
+        "api_version": "1.1",
+        "implementation_version": "1",
+        "description": "QuestLab OpenXR API layer packaging probe"
+    }
+}

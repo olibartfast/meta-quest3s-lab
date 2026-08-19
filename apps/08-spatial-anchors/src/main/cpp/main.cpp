@@ -15,7 +15,6 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -310,43 +309,6 @@ private:
     bool guideInitialized_ = false;
 };
 
-class FrameCadenceLogger {
-public:
-    void Record(std::chrono::steady_clock::duration duration) {
-        const auto nanoseconds =
-            std::chrono::duration_cast<std::chrono::nanoseconds>(duration);
-        if (frameCount_ == 0) {
-            intervalStart_ = std::chrono::steady_clock::now();
-        }
-        ++frameCount_;
-        totalDuration_ += nanoseconds;
-        maximumDuration_ = std::max(maximumDuration_, nanoseconds);
-        const auto now = std::chrono::steady_clock::now();
-        if (now - intervalStart_ < std::chrono::seconds(1)) {
-            return;
-        }
-        questlab::LogInfo(
-            "Frame cadence: %llu frames, mean PumpFrame %.3f ms, "
-            "max %.3f ms",
-            static_cast<unsigned long long>(frameCount_),
-            std::chrono::duration<double, std::milli>(
-                totalDuration_).count() /
-                static_cast<double>(frameCount_),
-            std::chrono::duration<double, std::milli>(
-                maximumDuration_).count());
-        frameCount_ = 0;
-        totalDuration_ = {};
-        maximumDuration_ = {};
-        intervalStart_ = now;
-    }
-
-private:
-    std::chrono::steady_clock::time_point intervalStart_{};
-    std::chrono::nanoseconds totalDuration_{};
-    std::chrono::nanoseconds maximumDuration_{};
-    uint64_t frameCount_ = 0;
-};
-
 void HandleAppCommand(android_app* app, int32_t command) {
     auto* state = static_cast<AndroidState*>(app->userData);
     switch (command) {
@@ -384,7 +346,6 @@ void android_main(android_app* app) {
     questlab::XrEventFanout eventFanout;
     SpatialAnchorScene scene;
     questlab::VulkanStereoRenderer renderer;
-    FrameCadenceLogger cadenceLogger;
 
     questlab::VulkanBindingOptions bindingOptions;
 #if defined(QUEST_ENABLE_VULKAN_VALIDATION)
@@ -472,15 +433,9 @@ void android_main(android_app* app) {
                 break;
             }
 
-            const bool frameRunning = xrSession.IsRunning();
-            const auto frameStart = std::chrono::steady_clock::now();
             if (!xrSession.PumpFrame(
                     &renderer, &scene, &passthrough)) {
                 break;
-            }
-            if (frameRunning) {
-                cadenceLogger.Record(
-                    std::chrono::steady_clock::now() - frameStart);
             }
         }
     }

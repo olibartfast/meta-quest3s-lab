@@ -78,6 +78,15 @@ android {
     release {
       debuggable false
     }
+
+    benchmark {
+      initWith release
+      debuggable false
+      signingConfig signingConfigs.debug
+      applicationIdSuffix ".benchmark"
+      versionNameSuffix "-benchmark"
+      matchingFallbacks = ["release"]
+    }
   }
 
   externalNativeBuild {

@@ -69,8 +69,33 @@ Builds and deploys the Vulkan stereo triangle. Use `--app 01-openxr-bootstrap`
 for the empty-frame lifecycle application, `--app 03-head-pose` for the
 tracking and coordinate-space visualization, `--app 04-controller-input` for
 controller rays and selection, `--app 05-passthrough` for native Vulkan mixed
-reality, or `--app xrpassthrough` for the preserved legacy baseline. Add
-`--build-only` to skip ADB deployment.
+reality, `--app 06-spatial-object` through `--app 08-spatial-anchors` for the
+spatial interaction examples, `--app 09-quest-camera` for Camera2 preview,
+`--app 10-rfdetr-detection` for deployable on-device RF-DETR world detection,
+or `--app xrpassthrough` for the preserved legacy baseline. Add `--build-only`
+to skip ADB deployment.
+
+The RF-DETR app builds, installs, provisions the model into app-private storage,
+verifies its checksum, grants the Quest camera permissions, and launches with:
+
+```bash
+./scripts/build_deploy.sh --app 10-rfdetr-detection
+```
+
+See `docs/rfdetr-detection.md` for controls and streaming/replay selection.
+
+Use the optimized, locally signed measurement variant with:
+
+```bash
+./scripts/build_deploy.sh \
+  --app 09-quest-camera \
+  --variant benchmark \
+  --perfetto-tracing
+```
+
+Shared bounded telemetry reports one structured CPU-phase snapshot per second.
+See `docs/performance-validation.md` for host tests, schema details, Perfetto,
+MQDH/OVR Metrics correlation, and privacy-safe evidence capture.
 
 
 

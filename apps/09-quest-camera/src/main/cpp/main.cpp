@@ -3,6 +3,7 @@
 
 #include "camera_source/meta_camera2_adapter.h"
 #include "camera_source/yuv_converter.h"
+#include "perf_telemetry/perf_telemetry.h"
 #include "vulkan_renderer/vulkan_stereo_renderer.h"
 #include "xr_core/vulkan_session_binding.h"
 #include "xr_core/xr_error.h"
@@ -15,6 +16,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <vector>
@@ -70,7 +72,17 @@ std::vector<float> CopyFloatArray(JNIEnv* environment, jfloatArray array) {
 class CameraScene final : public questlab::VulkanSceneProvider {
 public:
     explicit CameraScene(questlab::camera::IRgbCameraSource* source)
-        : source_(source) {}
+        : source_(source),
+          reportCadence_(std::chrono::seconds(1)),
+          runStart_(questlab::perf::SteadyClock::now()),
+          windowStartMonotonicNanoseconds_(
+              questlab::perf::SteadyNowNanoseconds()) {
+        std::snprintf(
+            runIdentifier_,
+            sizeof(runIdentifier_),
+            "camera-%lld",
+            static_cast<long long>(windowStartMonotonicNanoseconds_));
+    }
 
     bool BuildScene(
         const questlab::XrFrameRenderInfo& frame,
@@ -96,34 +108,33 @@ public:
         questlab::camera::RgbCapture capture;
         if (source_->TryConsumeLatest(&capture)) {
             auto pixels = std::make_shared<std::vector<uint8_t>>();
-            const auto conversionStart = std::chrono::steady_clock::now();
-            if (questlab::camera::ConvertYuv420ToRgba(capture, pixels.get())) {
+            bool converted = false;
+            {
+                questlab::perf::ScopedDuration<128> conversionTimer(
+                    &conversionDurations_);
+                converted = questlab::camera::ConvertYuv420ToRgba(
+                    capture, pixels.get());
+            }
+            if (converted) {
                 image_.frameId = capture.frameId;
                 image_.width = static_cast<uint32_t>(capture.width);
                 image_.height = static_cast<uint32_t>(capture.height);
                 image_.pixels = std::move(pixels);
-                const auto elapsed =
-                    std::chrono::duration_cast<std::chrono::microseconds>(
-                        std::chrono::steady_clock::now() - conversionStart);
-                if (MonotonicNanoseconds() - lastTimingLog_ >=
-                    1'000'000'000LL) {
-                    const questlab::camera::CameraSourceStats stats =
-                        source_->GetStats();
-                    questlab::LogInfo(
-                        "Camera frame=%llu %dx%d YUV->RGBA=%lldus "
-                        "received=%llu consumed=%llu overwritten=%llu",
-                        static_cast<unsigned long long>(capture.frameId),
-                        capture.width,
-                        capture.height,
-                        static_cast<long long>(elapsed.count()),
-                        static_cast<unsigned long long>(stats.receivedFrames),
-                        static_cast<unsigned long long>(stats.consumedFrames),
-                        static_cast<unsigned long long>(
-                            stats.overwrittenFrames));
-                    lastTimingLog_ = MonotonicNanoseconds();
+                ++convertedFrames_;
+                lastFrameId_ = capture.frameId;
+                if (capture.arrivalTimestampNanoseconds > 0) {
+                    captureToSceneAge_.AddSample({
+                        std::chrono::nanoseconds(std::max<int64_t>(
+                            MonotonicNanoseconds() -
+                                capture.arrivalTimestampNanoseconds,
+                            0)),
+                    });
                 }
+            } else {
+                ++conversionFailures_;
             }
         }
+        ReportTelemetry();
         if (image_.pixels != nullptr) {
             const float aspect =
                 static_cast<float>(image_.width) /
@@ -160,9 +171,92 @@ public:
     }
 
 private:
+    void ReportTelemetry() {
+        const auto now = questlab::perf::SteadyClock::now();
+        if (!reportCadence_.ShouldReport(now)) {
+            return;
+        }
+        const int64_t endNanoseconds =
+            std::chrono::duration_cast<questlab::perf::Nanoseconds>(
+                now.time_since_epoch()).count();
+        const bool warmup = now - runStart_ < std::chrono::seconds(5);
+        const auto conversion = conversionDurations_.Snapshot(
+            "camera_pipeline",
+            "yuv_to_rgba",
+            windowStartMonotonicNanoseconds_,
+            endNanoseconds,
+            warmup);
+        const auto age = captureToSceneAge_.Snapshot(
+            "camera_pipeline",
+            "capture_to_scene_publish",
+            windowStartMonotonicNanoseconds_,
+            endNanoseconds,
+            warmup);
+        const auto& conversionSummary = conversion.Summary();
+        const auto& ageSummary = age.Summary();
+        const questlab::camera::CameraSourceStats stats = source_->GetStats();
+        questlab::LogInfo(
+            "PERF {\"schema\":\"questlab.performance.v1\","
+            "\"severity\":\"info\",\"category\":\"camera_pipeline\","
+            "\"metric_name\":\"camera_pipeline\","
+            "\"unit\":\"milliseconds\",\"run_id\":\"%s\","
+            "\"window_start_monotonic_ns\":%lld,"
+            "\"window_end_monotonic_ns\":%lld,\"warmup\":%s,"
+            "\"last_frame_id\":%llu,"
+            "\"counters\":{\"received\":%llu,\"consumed\":%llu,"
+            "\"source_overwrite\":%llu,\"invalid\":%llu,"
+            "\"converted_window\":%llu,\"conversion_failure_window\":%llu,"
+            "\"queue_current\":%llu,\"queue_high_water\":%llu},"
+            "\"durations\":{"
+            "\"yuv_to_rgba\":[%llu,%.3f,%.3f,%.3f,%.3f,%.3f,%llu],"
+            "\"capture_to_scene_publish\":[%llu,%.3f,%.3f,%.3f,%.3f,%.3f,%llu]},"
+            "\"duration_fields\":[\"count\",\"mean\",\"p50\","
+            "\"p95\",\"p99\",\"max\",\"overflow\"]}",
+            runIdentifier_,
+            static_cast<long long>(windowStartMonotonicNanoseconds_),
+            static_cast<long long>(endNanoseconds),
+            warmup ? "true" : "false",
+            static_cast<unsigned long long>(lastFrameId_),
+            static_cast<unsigned long long>(stats.receivedFrames),
+            static_cast<unsigned long long>(stats.consumedFrames),
+            static_cast<unsigned long long>(stats.overwrittenFrames),
+            static_cast<unsigned long long>(stats.invalidFrames),
+            static_cast<unsigned long long>(convertedFrames_),
+            static_cast<unsigned long long>(conversionFailures_),
+            static_cast<unsigned long long>(stats.currentQueueDepth),
+            static_cast<unsigned long long>(stats.queueHighWaterMark),
+            static_cast<unsigned long long>(conversionSummary.count),
+            conversionSummary.meanMilliseconds,
+            conversionSummary.p50Milliseconds,
+            conversionSummary.p95Milliseconds,
+            conversionSummary.p99Milliseconds,
+            conversionSummary.maximumMilliseconds,
+            static_cast<unsigned long long>(conversionSummary.overflowCount),
+            static_cast<unsigned long long>(ageSummary.count),
+            ageSummary.meanMilliseconds,
+            ageSummary.p50Milliseconds,
+            ageSummary.p95Milliseconds,
+            ageSummary.p99Milliseconds,
+            ageSummary.maximumMilliseconds,
+            static_cast<unsigned long long>(ageSummary.overflowCount));
+        conversionDurations_.Clear();
+        captureToSceneAge_.Clear();
+        convertedFrames_ = 0;
+        conversionFailures_ = 0;
+        windowStartMonotonicNanoseconds_ = endNanoseconds;
+    }
+
     questlab::camera::IRgbCameraSource* source_ = nullptr;
     questlab::RgbaImageQuad image_;
-    int64_t lastTimingLog_ = 0;
+    questlab::perf::DurationRing<128> conversionDurations_;
+    questlab::perf::DurationRing<128> captureToSceneAge_;
+    questlab::perf::ReportCadence reportCadence_;
+    questlab::perf::SteadyClock::time_point runStart_;
+    int64_t windowStartMonotonicNanoseconds_ = 0;
+    uint64_t lastFrameId_ = 0;
+    uint64_t convertedFrames_ = 0;
+    uint64_t conversionFailures_ = 0;
+    char runIdentifier_[32]{};
 };
 
 void HandleAppCommand(android_app* app, int32_t command) {

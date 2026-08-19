@@ -1,0 +1,438 @@
+{
+  "schema": "QUESTLAB_RFDETR_MODEL_V1",
+  "manifest_version": 1,
+  "model": {
+    "family": "RF-DETR",
+    "variant": "nano",
+    "source": {
+      "rfdetr_version": "1.9.0",
+      "repository": "https://github.com/roboflow/rf-detr",
+      "git_tag": "1.9.0",
+      "git_commit": "a700efc750c0f8763e0e0828ba6525e9e7e0b4aa",
+      "checkpoint_filename": "rf-detr-nano.pth",
+      "checkpoint_url": "https://storage.googleapis.com/rfdetr/nano_coco/checkpoint_best_regular.pth",
+      "checkpoint_md5": "fb6504cce7fbdc783f7a46991f07639f",
+      "checkpoint_sha256": "d8d6b9ee57d4d0ed2b1f305163624712a0532cb7bce0c747317984fc5457440d",
+      "export_environment": {
+        "python": "3.11.15",
+        "torch": "2.10.0+cpu",
+        "torchvision": "0.25.0+cpu",
+        "onnx": "1.20.1",
+        "onnxruntime": "1.21.0"
+      }
+    },
+    "onnx": {
+      "filename": "rfdetr-nano.onnx",
+      "opset": 17,
+      "sha256": "1ac37bb3429380c7aee6b2c2778d20026db0ad18579cac119255d31f736dc760"
+    }
+  },
+  "input": {
+    "name": "input",
+    "element_type": "float32",
+    "shape": [
+      1,
+      3,
+      384,
+      384
+    ],
+    "layout": "NCHW",
+    "source_color_order": "RGB",
+    "scale": 0.00392156862745098,
+    "normalization": {
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ]
+    },
+    "resize": {
+      "mode": "squash",
+      "preserve_aspect_ratio": false,
+      "padding": "none",
+      "interpolation": "bilinear",
+      "coordinate_transform": "half_pixel",
+      "antialias": false
+    }
+  },
+  "outputs": [
+    {
+      "name": "dets",
+      "element_type": "float32",
+      "shape": [
+        1,
+        300,
+        4
+      ],
+      "meaning": "normalized_cxcywh"
+    },
+    {
+      "name": "labels",
+      "element_type": "float32",
+      "shape": [
+        1,
+        300,
+        91
+      ],
+      "meaning": "per_query_class_logits"
+    }
+  ],
+  "classes": {
+    "index_space": "coco_sparse_category_id",
+    "logit_slots": 91,
+    "entries": [
+      {
+        "id": 1,
+        "name": "person"
+      },
+      {
+        "id": 2,
+        "name": "bicycle"
+      },
+      {
+        "id": 3,
+        "name": "car"
+      },
+      {
+        "id": 4,
+        "name": "motorcycle"
+      },
+      {
+        "id": 5,
+        "name": "airplane"
+      },
+      {
+        "id": 6,
+        "name": "bus"
+      },
+      {
+        "id": 7,
+        "name": "train"
+      },
+      {
+        "id": 8,
+        "name": "truck"
+      },
+      {
+        "id": 9,
+        "name": "boat"
+      },
+      {
+        "id": 10,
+        "name": "traffic light"
+      },
+      {
+        "id": 11,
+        "name": "fire hydrant"
+      },
+      {
+        "id": 13,
+        "name": "stop sign"
+      },
+      {
+        "id": 14,
+        "name": "parking meter"
+      },
+      {
+        "id": 15,
+        "name": "bench"
+      },
+      {
+        "id": 16,
+        "name": "bird"
+      },
+      {
+        "id": 17,
+        "name": "cat"
+      },
+      {
+        "id": 18,
+        "name": "dog"
+      },
+      {
+        "id": 19,
+        "name": "horse"
+      },
+      {
+        "id": 20,
+        "name": "sheep"
+      },
+      {
+        "id": 21,
+        "name": "cow"
+      },
+      {
+        "id": 22,
+        "name": "elephant"
+      },
+      {
+        "id": 23,
+        "name": "bear"
+      },
+      {
+        "id": 24,
+        "name": "zebra"
+      },
+      {
+        "id": 25,
+        "name": "giraffe"
+      },
+      {
+        "id": 27,
+        "name": "backpack"
+      },
+      {
+        "id": 28,
+        "name": "umbrella"
+      },
+      {
+        "id": 31,
+        "name": "handbag"
+      },
+      {
+        "id": 32,
+        "name": "tie"
+      },
+      {
+        "id": 33,
+        "name": "suitcase"
+      },
+      {
+        "id": 34,
+        "name": "frisbee"
+      },
+      {
+        "id": 35,
+        "name": "skis"
+      },
+      {
+        "id": 36,
+        "name": "snowboard"
+      },
+      {
+        "id": 37,
+        "name": "sports ball"
+      },
+      {
+        "id": 38,
+        "name": "kite"
+      },
+      {
+        "id": 39,
+        "name": "baseball bat"
+      },
+      {
+        "id": 40,
+        "name": "baseball glove"
+      },
+      {
+        "id": 41,
+        "name": "skateboard"
+      },
+      {
+        "id": 42,
+        "name": "surfboard"
+      },
+      {
+        "id": 43,
+        "name": "tennis racket"
+      },
+      {
+        "id": 44,
+        "name": "bottle"
+      },
+      {
+        "id": 46,
+        "name": "wine glass"
+      },
+      {
+        "id": 47,
+        "name": "cup"
+      },
+      {
+        "id": 48,
+        "name": "fork"
+      },
+      {
+        "id": 49,
+        "name": "knife"
+      },
+      {
+        "id": 50,
+        "name": "spoon"
+      },
+      {
+        "id": 51,
+        "name": "bowl"
+      },
+      {
+        "id": 52,
+        "name": "banana"
+      },
+      {
+        "id": 53,
+        "name": "apple"
+      },
+      {
+        "id": 54,
+        "name": "sandwich"
+      },
+      {
+        "id": 55,
+        "name": "orange"
+      },
+      {
+        "id": 56,
+        "name": "broccoli"
+      },
+      {
+        "id": 57,
+        "name": "carrot"
+      },
+      {
+        "id": 58,
+        "name": "hot dog"
+      },
+      {
+        "id": 59,
+        "name": "pizza"
+      },
+      {
+        "id": 60,
+        "name": "donut"
+      },
+      {
+        "id": 61,
+        "name": "cake"
+      },
+      {
+        "id": 62,
+        "name": "chair"
+      },
+      {
+        "id": 63,
+        "name": "couch"
+      },
+      {
+        "id": 64,
+        "name": "potted plant"
+      },
+      {
+        "id": 65,
+        "name": "bed"
+      },
+      {
+        "id": 67,
+        "name": "dining table"
+      },
+      {
+        "id": 70,
+        "name": "toilet"
+      },
+      {
+        "id": 72,
+        "name": "tv"
+      },
+      {
+        "id": 73,
+        "name": "laptop"
+      },
+      {
+        "id": 74,
+        "name": "mouse"
+      },
+      {
+        "id": 75,
+        "name": "remote"
+      },
+      {
+        "id": 76,
+        "name": "keyboard"
+      },
+      {
+        "id": 77,
+        "name": "cell phone"
+      },
+      {
+        "id": 78,
+        "name": "microwave"
+      },
+      {
+        "id": 79,
+        "name": "oven"
+      },
+      {
+        "id": 80,
+        "name": "toaster"
+      },
+      {
+        "id": 81,
+        "name": "sink"
+      },
+      {
+        "id": 82,
+        "name": "refrigerator"
+      },
+      {
+        "id": 84,
+        "name": "book"
+      },
+      {
+        "id": 85,
+        "name": "clock"
+      },
+      {
+        "id": 86,
+        "name": "vase"
+      },
+      {
+        "id": 87,
+        "name": "scissors"
+      },
+      {
+        "id": 88,
+        "name": "teddy bear"
+      },
+      {
+        "id": 89,
+        "name": "hair drier"
+      },
+      {
+        "id": 90,
+        "name": "toothbrush"
+      }
+    ]
+  },
+  "postprocessing": {
+    "score_transform": "sigmoid",
+    "selection": "global_top_k_query_class_pairs",
+    "confidence_threshold": 0.5,
+    "maximum_detections": 300,
+    "nms": false,
+    "box_mapping": "normalized_cxcywh_direct_to_source_xyxy_and_clip"
+  },
+  "runtime": {
+    "name": "ONNX Runtime",
+    "version": "1.21.0",
+    "acquisition": "prebuilt_archive",
+    "archive_url": "https://github.com/microsoft/onnxruntime/releases/download/v1.21.0/onnxruntime-linux-x64-1.21.0.tgz",
+    "archive_sha256": "7485c7e7aac6501b27e353dcbe068e45c61ab51fbaf598d13970dfae669d20bf",
+    "execution_provider": "CPUExecutionProvider",
+    "intra_op_threads": 1,
+    "inter_op_threads": 1,
+    "execution_mode": "sequential",
+    "graph_optimization": "extended"
+  },
+  "comparison": {
+    "matching": "greedy_descending_confidence_same_class_highest_iou",
+    "class_id_agreement": "exact",
+    "maximum_absolute_confidence_delta": 0.0001,
+    "minimum_box_iou": 0.999,
+    "detection_count": "exact"
+  }
+}
